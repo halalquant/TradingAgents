@@ -1,4 +1,20 @@
+"""
+DEPRECATED: This configuration file is deprecated in favor of the centralized config system.
+
+Please use tradingagents.config instead:
+    from tradingagents.config import get_config
+    config = get_config()
+
+This file is kept for backwards compatibility only.
+"""
 import os
+import warnings
+
+warnings.warn(
+    "tradingagents.default_config is deprecated. Please use 'from tradingagents.config import get_config' instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 DEFAULT_CONFIG = {
     # App config
@@ -26,7 +42,7 @@ DEFAULT_CONFIG = {
     "data_vendors": {
         "core_crypto_apis": "bybit",       # Options: binance, bybit
         "core_stock_apis": "yfinance",       # Options: yfinance, alpha_vantage, local
-        "technical_indicators": "bybit",     # Options: bybit
+        "technical_indicators": "bybit",     # Options: bybit, taapi
         "fundamental_data": "alpha_vantage",  # Options: openai, alpha_vantage, local
         "news_data": "openai",        # Options: openai, alpha_vantage, google, local
         "profile_data": "bybit",          # Options: bybit, local
