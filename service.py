@@ -1,5 +1,5 @@
 from tradingagents.external.redis.repo import redis_queue, redis_repo
-from tradingagents.domain.model import AnalysisMeta,  AnalysisStatus
+from tradingagents.domain.model import AnalysisMeta,  AnalysisStatus, JobResultStatus
 from tradingagents.domain.response import EnqueueAnalysisResponse
 from rq import get_current_job
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -47,7 +47,7 @@ def process_job(user_id: str, symbol: str, date: str):
         job.save_meta()
         print(f"ERROR: Failed to process job-id {job.id}: {e} (Attempt {attempt})")
         # Update status to FAILED
-        redis_repo.update_status_analysis_meta(job_id=job.id, status=AnalysisStatus.FAILED)
+        redis_repo.update_status_analysis_meta(job_id=job.id, status=AnalysisStatus.FAILED, message=str(e))
         raise e
 
 
@@ -89,3 +89,19 @@ def enqueue_analysis(symbol: str, date: str) -> EnqueueAnalysisResponse:
             status="error",
             message=f"Failed to enqueue analysis task: {str(e)}"
         )
+
+def get_status(job_id: str) -> JobResultStatus | None:
+    """
+    Get the status of a trading analysis job. Return the current status and final result if available.
+
+    Args:
+        job_id (str): The job ID to check.
+    Returns:
+        JobResultStatus | None: The current status and result of the job, or None if not found.
+    """
+    print(f"INFO: Checking status for job-id {job_id}")
+    meta = redis_repo.get_analysis_meta(job_id)
+    result = redis_repo.get_result(job_id)
+    if meta:
+        return JobResultStatus(status=meta.status, result=result, message=meta.message)
+    return JobResultStatus(status=AnalysisStatus.FAILED, result=None, message="Job not found")

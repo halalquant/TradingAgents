@@ -4,7 +4,7 @@ import uvicorn
 from datetime import datetime
 
 # Import your trading agents
-from service import enqueue_analysis
+from service import enqueue_analysis, get_status
 from tradingagents.config import get_config
 
 config = get_config()
@@ -26,6 +26,12 @@ class TradingAnalyzeResponse(BaseModel):
     job_id: str
     timestamp: str
     status: str
+    
+class TradingStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    result: str | None = None
+    message: str | None = None
 
 @app.get("/")
 async def root():
@@ -62,7 +68,7 @@ async def analyze_trading_decision(request: TradingAnalyzeRequest):
     print(f"INFO: Enqueue response: {response}")
 
     if response.status == "error":
-        raise HTTPException(status_code=500, detail=response.message)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response.message)
     
     return TradingAnalyzeResponse(
         symbol=request.symbol,
@@ -72,6 +78,16 @@ async def analyze_trading_decision(request: TradingAnalyzeRequest):
         status=response.status
     )
 
+@app.get("/v1/trading/status/{job_id}", response_model=TradingStatusResponse, status_code=status.HTTP_200_OK)
+def get_trading_status(job_id: str):
+    response = get_status(job_id)
+    if response:
+        return TradingStatusResponse(
+            job_id=job_id,
+            status=response.status,
+            result=response.result,
+            message=response.message
+        )
 
 if __name__ == "__main__":
     # Run the server

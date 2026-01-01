@@ -12,6 +12,9 @@ ANALYSIS_COOLDOWN_KEY = "tradingagents-analysis-cooldown-{user_id}:{symbol}"
 class RedisRepo:
     def __init__(self, redis: Redis):
         self.redis = redis
+        
+    def _decode_hash(self, data: dict[bytes, bytes]) -> dict[str, str]:
+        return {k.decode(): v.decode() for k, v in data.items()}
 
     def exists(self, key: str) -> bool:
         return self.redis.exists(key) == 1
@@ -60,15 +63,17 @@ class RedisRepo:
                 "symbol": meta.symbol,
                 "status": meta.status.value,
                 "updated_at": meta.updated_at,
+                "created_at": meta.created_at,
             },
         )
         self.redis.expire(self._meta_key(meta.job_id), ttl)
 
-    def update_status_analysis_meta(self, job_id: str, status: AnalysisStatus):
+    def update_status_analysis_meta(self, job_id: str, status: AnalysisStatus, message: str = ""):
         self.redis.hset(
             self._meta_key(job_id),
             mapping={
                 "status": status.value,
+                "message": message,
                 "updated_at": time.time(),
             },
         )
@@ -77,15 +82,16 @@ class RedisRepo:
         data = self.redis.hgetall(self._meta_key(job_id))
         if not data:
             return None
-
+        data = self._decode_hash(data)
         return AnalysisMeta(
             job_id=data["job_id"],
             user_id=data["user_id"],
             symbol=data["symbol"],
+            message=data.get("message"),
             trade_date=data["trade_date"],
             status=AnalysisStatus(data["status"]),
             updated_at=float(data["updated_at"]),
-            created_at=float(data.get("created_at")),
+            created_at=float(data["created_at"]) if "created_at" in data else 0.0,
         )
 
     def save_result(self, job_id: str, final_trade: str, ttl: int = 7 * 24 * 3600):
