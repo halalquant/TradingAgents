@@ -159,6 +159,9 @@ source .venv/bin/activate && pip install --no-deps -r requirements.txt #install 
 
 Api
 python webapp.py
+
+Bot Telegram
+python bot.py
 ```
 
 ### Connect to Redis (Local)
