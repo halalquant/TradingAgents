@@ -98,6 +98,7 @@ class Settings:
         self.TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
         self.TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
         self.TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "")
+        self.TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
         
         # Redis settings
         self.REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -110,6 +111,12 @@ class Settings:
         self.RQ_INTERVALS = [
             int(x.strip()) for x in os.getenv("RQ_INTERVALS", "30,60,120").split(",")
         ]
+        
+        # Whitelist settings
+        self.WHITELIST_ENABLED = os.getenv("WHITELIST_ENABLED", "false").lower() == "true"
+        self.WHITELISTED_USER_IDS = [int(x.strip()) for x in os.getenv("WHITELISTED_USER_IDS", "").split(",") if x.strip().isdigit()]
+        self.AVAILABLE_COINS = [x.strip().upper() for x in os.getenv("AVAILABLE_COINS", "").split(",") if x.strip()]
+    
     
     @property
     def data_vendors(self) -> Dict[str, str]:

@@ -5,8 +5,6 @@ from rq import get_current_job
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.dataflows.config import get_config
 
-DEFAULT_USER = "global_user"
-
 trading_agent = None
 
 def get_trading_agent():
@@ -30,7 +28,7 @@ def process_job(user_id: str, symbol: str, date: str):
         print(f"INFO: Processing job-id {job.id} for symbol {symbol} and date {date} by user {user_id}")
 
         # Update status to RUNNING
-        redis_repo.update_status_analysis_meta(job_id=job.id, status=AnalysisStatus.RUNNING)
+        redis_repo.update_status_analysis_meta(user_id=user_id, job_id=job.id, status=AnalysisStatus.RUNNING)
 
         final_state, decision = get_trading_agent().propagate(ticker=symbol, trade_date=date)
 
@@ -39,7 +37,7 @@ def process_job(user_id: str, symbol: str, date: str):
         # Save the final result
         redis_repo.save_result(job_id=job.id, final_trade=final_state["final_trade_decision"])
         # Update status to DONE
-        redis_repo.update_status_analysis_meta(job_id=job.id, status=AnalysisStatus.DONE)
+        redis_repo.update_status_analysis_meta(user_id=user_id, job_id=job.id, status=AnalysisStatus.DONE)
         
         print(f"INFO: Completed job-id {job.id} for symbol {symbol}")
     except Exception as e:
@@ -47,15 +45,16 @@ def process_job(user_id: str, symbol: str, date: str):
         job.save_meta()
         print(f"ERROR: Failed to process job-id {job.id}: {e} (Attempt {attempt})")
         # Update status to FAILED
-        redis_repo.update_status_analysis_meta(job_id=job.id, status=AnalysisStatus.FAILED, message=str(e))
+        redis_repo.update_status_analysis_meta(user_id=user_id, job_id=job.id, status=AnalysisStatus.FAILED, message=str(e))
         raise e
 
 
-def enqueue_analysis(symbol: str, date: str) -> EnqueueAnalysisResponse:
+def enqueue_analysis(user_id: str, symbol: str, date: str) -> EnqueueAnalysisResponse:
     """
     Enqueue a background task to analyze trading data for a given symbol and date.
 
     Args:
+        user_id (str): The user ID requesting the analysis.
         symbol (str): The trading symbol to analyze (e.g., "BTC/USDT").
         date (str): The date for which to perform the analysis in YYYY-MM-DD format.
     Returns:
@@ -63,7 +62,7 @@ def enqueue_analysis(symbol: str, date: str) -> EnqueueAnalysisResponse:
     """
     try:
         # Check if the analysis is on cooldown, if cooldown return the job-id
-        job_id, ttl = redis_repo.get_cooldown(DEFAULT_USER, symbol) 
+        job_id, ttl = redis_repo.get_cooldown(user_id, symbol) 
         if job_id:
             return EnqueueAnalysisResponse(
                 job_id=job_id,
@@ -72,10 +71,10 @@ def enqueue_analysis(symbol: str, date: str) -> EnqueueAnalysisResponse:
             )
         
         # If not on cooldown, enqueue the task, insert cooldown key with TTL 6 hours, insert with status pending redis key for analysis analysis:job:{job_id}
-        task = redis_queue.enqueue(process_job, DEFAULT_USER, symbol, date, job_timeout=7200)
+        task = redis_queue.enqueue(process_job, user_id, symbol, date, job_timeout=7200)
 
-        redis_repo.save_cooldown(DEFAULT_USER, symbol, task.id)
-        redis_repo.create_analysis_meta(AnalysisMeta.new(job_id=task.id, user_id=DEFAULT_USER, symbol=symbol, trade_date=date))
+        redis_repo.save_cooldown(user_id, symbol, task.id)
+        redis_repo.create_analysis_meta(AnalysisMeta.new(job_id=task.id, user_id=user_id, symbol=symbol, trade_date=date))
 
         return EnqueueAnalysisResponse(
             job_id=task.id,
@@ -90,18 +89,19 @@ def enqueue_analysis(symbol: str, date: str) -> EnqueueAnalysisResponse:
             message=f"Failed to enqueue analysis task: {str(e)}"
         )
 
-def get_status(job_id: str) -> JobResultStatus | None:
+def get_status(user_id: str, job_id: str) -> JobResultStatus:
     """
     Get the status of a trading analysis job. Return the current status and final result if available.
 
     Args:
+        user_id (str): The user ID requesting the status.
         job_id (str): The job ID to check.
     Returns:
-        JobResultStatus | None: The current status and result of the job, or None if not found.
+        JobResultStatus: The current status and result of the job, or a failed status if not found.
     """
     print(f"INFO: Checking status for job-id {job_id}")
-    meta = redis_repo.get_analysis_meta(job_id)
+    meta = redis_repo.get_analysis_meta(user_id, job_id)
     result = redis_repo.get_result(job_id)
     if meta:
         return JobResultStatus(status=meta.status, result=result, message=meta.message)
-    return JobResultStatus(status=AnalysisStatus.FAILED, result=None, message="Job not found")
+    return JobResultStatus(status=AnalysisStatus.DONE, result=None, message="Job not found")

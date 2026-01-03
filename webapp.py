@@ -8,6 +8,7 @@ from service import enqueue_analysis, get_status
 from tradingagents.config import get_config
 
 config = get_config()
+DEFAULT_USER = "global_user"
 
 # Create FastAPI app instance
 app = FastAPI(
@@ -64,7 +65,7 @@ async def analyze_trading_decision(request: TradingAnalyzeRequest):
         "date": "2024-05-10"
     }
     """
-    response = enqueue_analysis(request.symbol, request.date)
+    response = enqueue_analysis(DEFAULT_USER, request.symbol, request.date)
     print(f"INFO: Enqueue response: {response}")
 
     if response.status == "error":
@@ -80,7 +81,7 @@ async def analyze_trading_decision(request: TradingAnalyzeRequest):
 
 @app.get("/v1/trading/status/{job_id}", response_model=TradingStatusResponse, status_code=status.HTTP_200_OK)
 def get_trading_status(job_id: str):
-    response = get_status(job_id)
+    response = get_status(DEFAULT_USER, job_id)
     if response:
         return TradingStatusResponse(
             job_id=job_id,

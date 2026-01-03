@@ -30,3 +30,4 @@ fastapi
 uvicorn[standard]
 redis[hiredis]
 rq
+python-telegram-bot

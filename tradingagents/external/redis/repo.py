@@ -5,7 +5,7 @@ from tradingagents.config import settings
 from rq import Queue, Retry
 from redis import Redis
 
-ANALYSIS_META_KEY = "analysis:meta:{job_id}"
+ANALYSIS_META_KEY = "analysis:meta:{user_id}:{job_id}"
 ANALYSIS_RESULT_KEY = "analysis:result:{job_id}"
 ANALYSIS_COOLDOWN_KEY = "tradingagents-analysis-cooldown-{user_id}:{symbol}"
 
@@ -47,15 +47,15 @@ class RedisRepo:
         return job_id, ttl
 
 
-    def _meta_key(self, job_id: str) -> str:
-        return ANALYSIS_META_KEY.format(job_id=job_id)
+    def _meta_key(self, user_id: str, job_id: str) -> str:
+        return ANALYSIS_META_KEY.format(user_id=user_id, job_id=job_id)
 
     def _result_key(self, job_id: str) -> str:
         return ANALYSIS_RESULT_KEY.format(job_id=job_id)
     
     def create_analysis_meta(self, meta: AnalysisMeta, ttl: int = 7 * 24 * 3600):
         self.redis.hset(
-            self._meta_key(meta.job_id),
+            self._meta_key(meta.user_id, meta.job_id),
             mapping={
                 "job_id": meta.job_id,
                 "trade_date": meta.trade_date,
@@ -66,11 +66,11 @@ class RedisRepo:
                 "created_at": meta.created_at,
             },
         )
-        self.redis.expire(self._meta_key(meta.job_id), ttl)
+        self.redis.expire(self._meta_key(meta.user_id, meta.job_id), ttl)
 
-    def update_status_analysis_meta(self, job_id: str, status: AnalysisStatus, message: str = ""):
+    def update_status_analysis_meta(self, user_id: str, job_id: str, status: AnalysisStatus, message: str = ""):
         self.redis.hset(
-            self._meta_key(job_id),
+            self._meta_key(user_id, job_id),
             mapping={
                 "status": status.value,
                 "message": message,
@@ -78,8 +78,8 @@ class RedisRepo:
             },
         )
 
-    def get_analysis_meta(self, job_id: str) -> AnalysisMeta | None:
-        data = self.redis.hgetall(self._meta_key(job_id))
+    def get_analysis_meta(self, user_id: str, job_id: str) -> AnalysisMeta | None:
+        data = self.redis.hgetall(self._meta_key(user_id, job_id))
         if not data:
             return None
         data = self._decode_hash(data)
