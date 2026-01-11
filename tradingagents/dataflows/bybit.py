@@ -138,7 +138,7 @@ def get_symbol(base_coin: str, quote_coin: str) -> str:
     # 3. Fallback/Error handling
     return None
 
-def get_open_orders(symbol: str) -> str:
+def get_open_orders(symbol: str, storage) -> str:
     """
     Fetches active orders and returns a text report analyzing capital lock-up and order age.
     """
@@ -173,6 +173,8 @@ def get_open_orders(symbol: str) -> str:
 
     report = f"# Open Orders for {symbol.upper()}\n"
     report += json.dumps(orders, indent=2)
+
+    storage.order = orders
 
     return report
 
