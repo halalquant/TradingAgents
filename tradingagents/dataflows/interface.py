@@ -31,6 +31,15 @@ from .bybit import (
     get_crypto_indicator_window as get_bybit_crypto_indicator_window,
     get_crypto_indicators_bulk as get_bybit_crypto_indicators_bulk
 )
+from .bybit_proposal import (
+    create_place_order_proposal,
+    edit_place_order_proposal,
+    create_amend_order_proposal,
+    edit_amend_order_proposal,
+    create_cancel_order_proposal,
+    edit_cancel_order_proposal,
+    delete_proposal
+)
 
 # Tools organized by category
 TOOLS_CATEGORIES = {
@@ -79,6 +88,13 @@ TOOLS_CATEGORIES = {
         "tools": [
             "get_account_balance",
             "get_open_orders",
+            "create_place_order_proposal",
+            "edit_place_order_proposal",
+            "create_amend_order_proposal",
+            "edit_amend_order_proposal",
+            "create_cancel_order_proposal",
+            "edit_cancel_order_proposal",
+            "delete_proposal"
         ]
     }
 }
@@ -110,7 +126,7 @@ VENDOR_METHODS = {
     },
     # technical_indicators
     "get_indicators": {
-        # "taapi": get_crypto_stats_indicators_window,
+        "taapi": get_crypto_stats_indicators_window,
         "bybit" : get_bybit_crypto_indicator_window
         # "alpha_vantage": get_alpha_vantage_indicator,
         # "yfinance": get_stock_stats_indicators_window,
@@ -175,6 +191,27 @@ VENDOR_METHODS = {
     "get_open_orders": {
         "bybit": get_open_orders,
     },
+    "create_place_order_proposal" : {
+        "bybit" : create_place_order_proposal
+    },
+    "edit_place_order_proposal" : {
+        "bybit" : edit_place_order_proposal
+    },
+    "create_amend_order_proposal" : {
+        "bybit" : create_amend_order_proposal
+    },
+    "edit_amend_order_proposal" : {
+        "bybit" : edit_amend_order_proposal
+    },
+    "create_cancel_order_proposal" : {
+        "bybit" : create_cancel_order_proposal
+    },
+    "edit_cancel_order_proposal" : {
+        "bybit" : edit_cancel_order_proposal
+    },
+    "delete_proposal" : {
+        "bybit" : delete_proposal
+    }
 }
 
 def get_category_for_method(method: str) -> str:

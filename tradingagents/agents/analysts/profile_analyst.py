@@ -1,26 +1,21 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_utils import get_account_balance, get_open_orders
+# from tradingagents.agents.utils.agent_utils import get_account_balance, get_open_orders
 from tradingagents.dataflows.config import get_config
 
 
-def create_profile_analyst(llm):
+def create_profile_analyst(llm, tools):
     def profile_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["ticker_of_interest"]
-
-        tools = [
-            get_account_balance,
-            get_open_orders,
-        ]
 
         system_message = (
                             "You are a Profile and Portfolio Analyst tasked with providing a deep-dive assessment of the user's personal trading account and financial health. \
                             You will be given access to the user's portfolio data, your objective is to write a comprehensive long report detailing your analysis, insights, and implications for the user's trading capacity after assessing their buying power, asset allocation, risk exposure, and active market participation. \
                             Use the `get_account_balance(symbol)` tool (e.g., symbol='BTC/USDT') to determine total equity, free margin, and locked capital. Use the `get_open_orders(symbol)` tool (e.g., symbol='BTC/USDT') to identify capital tied up in pending limit orders or stop-losses. \
                             Do not simply list the user's balances or holdings, provide detailed and finegrained analysis and insights. For instance, warn the user if they are overexposed to a single volatile asset, point out if they have too many 'stale' open orders locking up funds, or analyze if their current cash position allows for aggressive moves. Your report should serve as a risk management check before any new trades are executed."
-                            + """ Make sure to append a Markdown table at the end of the report to organize key portfolio metrics (Total Equity, Free Margin, Top Holdings, Risk Level) and actionable recommendations, organized and easy to read.""",
+                            + """ Make sure to append a Markdown table at the end of the report to organize key portfolio metrics (Total Equity, Free Margin, Top Holdings, Risk Level) and actionable recommendations, organized and easy to read. Also insert the open orders data in JSON format within a code block for clarity (include the important details and order id).""",
                         )
 
         prompt = ChatPromptTemplate.from_messages(

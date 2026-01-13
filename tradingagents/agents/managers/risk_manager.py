@@ -1,49 +1,108 @@
-from tradingagents.agents.utils.memory import FinancialSituationMemory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import AIMessage
+import functools
 
-def create_risk_manager(llm, memory: FinancialSituationMemory):
-    def risk_manager_node(state) -> dict:
-
+def create_risk_manager(llm, memory, tools, storage):
+    def risk_manager_node(state):
+        # 1. Extract State Data
         history = state["risk_debate_state"]["history"]
         risk_debate_state = state["risk_debate_state"]
-        market_research_report = state["market_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-        sentiment_report = state["sentiment_report"]
-        profile_report = state["profile_report"]
-        trader_plan = state["investment_plan"]
+        
+        market_research_report = state.get("market_report", "")
+        news_report = state.get("news_report", "")
+        fundamentals_report = state.get("fundamentals_report", "")
+        sentiment_report = state.get("sentiment_report", "")
+        profile_report = state.get("profile_report", "")
+        trader_plan = state.get("trader_investment_plan", "No plan provided.")
+        trader_proposal = state.get("trader_proposal", "No proposal")
 
+        # 2. Context Construction
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}\n\n{profile_report}"
+        
+        # 3. Memory Retrieval
         past_memories = memory.get_memories(curr_situation, n_matches=2)
-
         past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
+        if past_memories:
+            for i, rec in enumerate(past_memories, 1):
+                past_memory_str += rec["recommendation"] + "\n\n"
+        else:
+            past_memory_str = "No past memories found."
 
-        prompt = f"""As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Risky, Neutral, and Safe/Conservative—and determine the best course of action for the trader. Your decision must result in a clear recommendation: Buy, Sell, or Hold. Choose Hold only if strongly justified by specific arguments, not as a fallback when all sides seem valid. Strive for clarity and decisiveness.
+        # 4. Define System Message
+        system_message = (
+            f"As the Risk Management Judge and Debate Facilitator, your goal is to evaluate the debate between three risk analysts—Risky, Neutral, and Safe/Conservative—and determine the final course of action.\n\n"
+            
+            f"### Tools & Execution\n"
+            f"You have access to tools to **edit**, **cancel**, or **create** order proposals. "
+            f"If the Trader's original plan poses unacceptable risks based on the debate, you MUST use the `edit_place_order_proposal` or `create_cancel_order_proposal` tools to adjust the strategy directly. "
+            f"If the plan is sound, you may simply confirm it in text or use a tool to finalize parameters if necessary.\n\n"
 
-Guidelines for Decision-Making:
-1. **Summarize Key Arguments**: Extract the strongest points from each analyst, focusing on relevance to the context.
-2. **Provide Rationale**: Support your recommendation with direct quotes and counterarguments from the debate.
-3. **Refine the Trader's Plan**: Start with the trader's original plan, **{trader_plan}**, and adjust it based on the analysts' insights.
-4. **Learn from Past Mistakes**: Use lessons from **{past_memory_str}** to address prior misjudgments and improve the decision you are making now to make sure you don't make a wrong BUY/SELL/HOLD call that loses money.
+            f"### Decision Guidelines\n"
+            f"1. **Summarize Key Arguments**: Extract the strongest points from the debate history below.\n"
+            f"2. **Refine the Plan**: Start with the trader's original plan: **{trader_plan}**. Adjust it based on the analysts' insights. Use tools to apply these adjustments formally.\n"
+            f"3. **Learn from Past Mistakes**: Use lessons from: **{past_memory_str}** to avoid prior misjudgments.\n"
+            f"4. **Final Verdict**: Your text response must be a clear recommendation: Buy, Sell, or Hold. (Choose Hold only if strongly justified).\n\n"
 
-Deliverables:
-- A clear and actionable recommendation: Buy, Sell, or Hold.
-- Detailed reasoning anchored in the debate and past reflections.
+            f"### Current Open Orders in Exchange\n"
+            f"{storage.order}\n\n"
 
----
+            f"### Trader's Proposal\n"
+            f"{trader_proposal}\n\n"
 
-**Analysts Debate History:**  
-{history}
+            f"### Analysts Debate History\n"
+            f"{history}\n\n"
 
----
+            f"### Objective\n"
+            f"Focus on actionable insights. If the Trader's proposal (quantity, price, side) needs changing to mitigate risk, **CALL THE TOOL** to edit it. "
+            f"Provide detailed reasoning anchored in the debate."
+            f"In the end, make a markdown style report of the final trade decision."
+        )
 
-Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes."""
+        # 5. Construct Prompt Template
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " You have access to the following tools: {tool_names}.\n\n"
+                    "{system_message}"
+                ),
+                MessagesPlaceholder(variable_name="messages"),
+            ]
+        )
 
-        response = llm.invoke(prompt)
+        # 6. Fill Partial Variables
+        prompt = prompt.partial(system_message=system_message)
+        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
 
+        # 7. Create Chain and Invoke
+        chain = prompt | llm.bind_tools(tools)
+        result = chain.invoke(state["messages"])
+
+        # 8. Handle Output Accumulation (The Fix)
+        # Combine existing history with the new result to capture the full chain of thought.
+        # all_messages = state.get("messages", []) + [result]
+        
+        # Filter for AI messages to construct the full narrative. 
+        # You can add logic here to filter by 'name' if you only want the Risk Manager's specific messages.
+        # full_chat_history = []
+        # for msg in all_messages:
+        #     if isinstance(msg, AIMessage) and msg.content:
+        #         full_chat_history.append(msg.content)
+        
+        # # Join them to get the complete text log
+        # judge_decision_text = "\n\n".join(full_chat_history)
+        
+        # # Fallback if empty (e.g. only tool calls with no thought text)
+        # if not judge_decision_text.strip():
+        judge_decision_text = result.content if result.content else "Action taken via tool."
+
+        # 9. Update Risk Debate State
         new_risk_debate_state = {
-            "judge_decision": response.content,
+            "judge_decision": judge_decision_text,
             "history": risk_debate_state["history"],
             "risky_history": risk_debate_state["risky_history"],
             "safe_history": risk_debate_state["safe_history"],
@@ -56,8 +115,10 @@ Focus on actionable insights and continuous improvement. Build on past lessons, 
         }
 
         return {
+            "messages": [result], 
             "risk_debate_state": new_risk_debate_state,
-            "final_trade_decision": response.content,
+            "final_trade_decision": judge_decision_text, # Now contains the full concatenated history
+            "risk_manager_proposal" : storage.__str__()
         }
 
     return risk_manager_node

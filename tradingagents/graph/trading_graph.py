@@ -40,7 +40,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_global_news,
     get_fear_and_greed,
     get_account_balance,
-    get_open_orders
+    make_get_open_orders
 )
 
 from .conditional_logic import ConditionalLogic
@@ -48,6 +48,17 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
+from .proposal import ProposalStorage
+
+from tradingagents.agents.utils.agent_utils import (
+    make_create_place_order_proposal,
+    make_edit_place_order_proposal,
+    make_create_amend_order_proposal,
+    make_edit_amend_order_proposal,
+    make_create_cancel_order_proposal,
+    make_edit_cancel_order_proposal,
+    make_delete_proposal
+)
 
 
 class TradingAgentsGraph:
@@ -98,6 +109,9 @@ class TradingAgentsGraph:
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
 
+        # Initialize proposal storage
+        self.proposal_storage = ProposalStorage()
+
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
 
@@ -113,6 +127,7 @@ class TradingAgentsGraph:
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
+            self.proposal_storage
         )
 
         self.propagator = Propagator()
@@ -172,13 +187,38 @@ class TradingAgentsGraph:
                 [
                     # Profile analysis tools can be added here
                     get_account_balance,
-                    get_open_orders,
+                    make_get_open_orders(self.proposal_storage),
                 ]
             ),
+            "trader" : ToolNode(
+                [
+                    make_create_place_order_proposal(self.proposal_storage),
+                    make_edit_place_order_proposal(self.proposal_storage),
+                    make_create_amend_order_proposal(self.proposal_storage),
+                    make_edit_amend_order_proposal(self.proposal_storage),
+                    make_create_cancel_order_proposal(self.proposal_storage),
+                    make_edit_cancel_order_proposal(self.proposal_storage),
+                    make_delete_proposal(self.proposal_storage)
+                ]
+            ),
+            "risk_manager" : ToolNode(
+                [
+                    make_create_place_order_proposal(self.proposal_storage),
+                    make_edit_place_order_proposal(self.proposal_storage),
+                    make_create_amend_order_proposal(self.proposal_storage),
+                    make_edit_amend_order_proposal(self.proposal_storage),
+                    make_create_cancel_order_proposal(self.proposal_storage),
+                    make_edit_cancel_order_proposal(self.proposal_storage),
+                    make_delete_proposal(self.proposal_storage)
+                ]
+            )
         }
 
     def propagate(self, ticker, trade_date):
         """Run the trading agents graph for a coin pair on a specific date."""
+
+        # empty proposal storage
+        self.proposal_storage.clear_proposals()
 
         self.ticker = ticker
 

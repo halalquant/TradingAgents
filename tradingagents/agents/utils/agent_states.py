@@ -72,3 +72,6 @@ class AgentState(MessagesState):
         RiskDebateState, "Current state of the debate on evaluating risk"
     ]
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
+
+    trader_proposal: Annotated[dict, "Trader Proposals"]
+    risk_manager_proposal: Annotated[dict, "Risk Judge Proposals"]

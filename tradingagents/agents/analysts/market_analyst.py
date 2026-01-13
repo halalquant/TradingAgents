@@ -1,6 +1,5 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from tradingagents.agents.utils.agent_utils import get_crypto_data, get_indicators_bulk, get_account_balance, get_open_orders
-
+from tradingagents.agents.utils.agent_utils import get_crypto_data, get_indicators_bulk
 
 def create_market_analyst(llm):
 
@@ -11,8 +10,6 @@ def create_market_analyst(llm):
         tools = [
             get_crypto_data,
             get_indicators_bulk,
-            get_account_balance,
-            get_open_orders,
         ]
 
         system_message = (

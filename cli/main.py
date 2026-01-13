@@ -71,6 +71,8 @@ class MessageBuffer:
             "investment_plan": None,
             "trader_investment_plan": None,
             "final_trade_decision": None,
+            "trader_proposal" : None,
+            "risk_manager_proposal" : None
         }
 
     def add_message(self, message_type, content):
@@ -113,6 +115,8 @@ class MessageBuffer:
                 "investment_plan": "Research Team Decision",
                 "trader_investment_plan": "Trading Team Plan",
                 "final_trade_decision": "Portfolio Management Decision",
+                "trader_proposal" : "Trader Proposal",
+                "risk_manager_proposal" : "Risk Manager Proposal"
             }
             self.current_report = (
                 f"### {section_titles[latest_section]}\n{latest_content}"
@@ -166,11 +170,19 @@ class MessageBuffer:
         if self.report_sections["trader_investment_plan"]:
             report_parts.append("## Trading Team Plan")
             report_parts.append(f"{self.report_sections['trader_investment_plan']}")
+        
+        if self.report_sections["trader_proposal"]:
+            report_parts.append("## Trader Proposal")
+            report_parts.append(f"{self.report_sections['trader_proposal']}")
 
         # Portfolio Management Decision
         if self.report_sections["final_trade_decision"]:
             report_parts.append("## Portfolio Management Decision")
             report_parts.append(f"{self.report_sections['final_trade_decision']}")
+
+        if self.report_sections["risk_manager_proposal"]:
+            report_parts.append("## Risk Manager Proposal")
+            report_parts.append(f"{self.report_sections['risk_manager_proposal']}")
 
         self.final_report = "\n\n".join(report_parts) if report_parts else None
 
@@ -1020,6 +1032,14 @@ def run_analysis():
                     message_buffer.update_report_section(
                         "trader_investment_plan", chunk["trader_investment_plan"]
                     )
+                
+                if (
+                    "trader_proposal" in chunk
+                    and chunk["trader_proposal"]
+                ):
+                    message_buffer.update_report_section(
+                        "trader_proposal", chunk["trader_proposal"]
+                    )
                     # Set first risk analyst to in_progress
                     message_buffer.update_agent_status("Risky Analyst", "in_progress")
 
@@ -1094,6 +1114,13 @@ def run_analysis():
                         message_buffer.update_report_section(
                             "final_trade_decision",
                             f"### Portfolio Manager Decision\n{risk_state['judge_decision']}",
+                        )
+                    if (
+                        "risk_manager_proposal" in chunk
+                        and chunk["risk_manager_proposal"]
+                    ):
+                        message_buffer.update_report_section(
+                            "risk_manager_proposal", chunk["risk_manager_proposal"]
                         )
                         # Mark risk analysts as completed
                         message_buffer.update_agent_status("Risky Analyst", "completed")
