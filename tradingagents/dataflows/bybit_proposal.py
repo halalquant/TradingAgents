@@ -2,6 +2,10 @@ from .bybit import get_symbol
 import uuid
 import json
 
+PLACE_ORDER = "place_order"
+AMEND_ORDER = "amend_order"
+CANCEL_ORDER = "cancel_order"
+
 def create_place_order_proposal(
     symbol: str="BTC/USDT", 
     side: str="Buy", # Buy, Sell
@@ -35,7 +39,7 @@ def create_place_order_proposal(
         return "market_unit must be 'baseCoin' or 'quoteCoin'."
 
     proposal = {
-        "type" : "place order",
+        "type" : PLACE_ORDER,
         "id": str(uuid.uuid4()),
         "category": "spot",
         "symbol": symbol_name,
@@ -118,7 +122,7 @@ def create_amend_order_proposal(
         return f"Error: No valid spot symbol found for {base_coin}/{quote_coin}"
 
     proposal = {
-        "type" : "amend order",
+        "type" : AMEND_ORDER,
         "id": str(uuid.uuid4()),
         "category": "spot",
         "symbol": symbol_name,
@@ -188,7 +192,7 @@ def create_cancel_order_proposal(
         return f"Error: No valid spot symbol found for {base_coin}/{quote_coin}"
 
     proposal = {
-        "type" : "cancel order",
+        "type" : CANCEL_ORDER,
         "id": str(uuid.uuid4()),
         "category": "spot",
         "symbol": symbol_name,

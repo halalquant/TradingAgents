@@ -55,6 +55,7 @@ def create_risk_manager(llm, memory, tools, storage):
             f"### Objective\n"
             f"Focus on actionable insights. If the Trader's proposal (quantity, price, side) needs changing to mitigate risk, **CALL THE TOOL** to edit it. "
             f"Provide detailed reasoning anchored in the debate."
+            f"In the end, make a markdown style report of the final trade decision."
         )
 
         # 5. Construct Prompt Template
@@ -83,21 +84,21 @@ def create_risk_manager(llm, memory, tools, storage):
 
         # 8. Handle Output Accumulation (The Fix)
         # Combine existing history with the new result to capture the full chain of thought.
-        all_messages = state.get("messages", []) + [result]
+        # all_messages = state.get("messages", []) + [result]
         
         # Filter for AI messages to construct the full narrative. 
         # You can add logic here to filter by 'name' if you only want the Risk Manager's specific messages.
-        full_chat_history = []
-        for msg in all_messages:
-            if isinstance(msg, AIMessage) and msg.content:
-                full_chat_history.append(msg.content)
+        # full_chat_history = []
+        # for msg in all_messages:
+        #     if isinstance(msg, AIMessage) and msg.content:
+        #         full_chat_history.append(msg.content)
         
-        # Join them to get the complete text log
-        judge_decision_text = "\n\n".join(full_chat_history)
+        # # Join them to get the complete text log
+        # judge_decision_text = "\n\n".join(full_chat_history)
         
-        # Fallback if empty (e.g. only tool calls with no thought text)
-        if not judge_decision_text.strip():
-            judge_decision_text = result.content if result.content else "Action taken via tool."
+        # # Fallback if empty (e.g. only tool calls with no thought text)
+        # if not judge_decision_text.strip():
+        judge_decision_text = result.content if result.content else "Action taken via tool."
 
         # 9. Update Risk Debate State
         new_risk_debate_state = {
