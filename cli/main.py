@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 import datetime
 import typer
@@ -807,7 +808,10 @@ def run_analysis():
                 if content:
                     file_name = f"{section_name}.md"
                     with open(report_dir / file_name, "w") as f:
-                        f.write(content)
+                        if isinstance(content, dict):
+                            f.write(json.dumps(content, indent=2))
+                        else:
+                            f.write(content)
         return wrapper
 
     message_buffer.add_message = save_message_decorator(message_buffer, "add_message")
