@@ -1,10 +1,12 @@
 from .bybit import get_symbol
+from .utils import (
+    PLACE_ORDER,
+    AMEND_ORDER,
+    CANCEL_ORDER,
+    CANCEL_PROPOSAL
+)
 import uuid
-import json
 
-PLACE_ORDER = "place_order"
-AMEND_ORDER = "amend_order"
-CANCEL_ORDER = "cancel_order"
 
 def create_place_order_proposal(
     symbol: str="BTC/USDT", 
@@ -14,12 +16,8 @@ def create_place_order_proposal(
     price: float = None, 
     market_unit: str = "baseCoin", # baseCoin, quoteCoin
     take_profit: float = None, 
-    stop_loss: float = None, 
-    storage = None
+    stop_loss: float = None,
 ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    
     if "/" not in symbol:
         return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
     base_coin, quote_coin = symbol.split("/")
@@ -32,9 +30,9 @@ def create_place_order_proposal(
     market_unit_condition = market_unit in ["baseCoin", "quoteCoin"]
 
     if not side_condition:
-        return "side must be 'Buy' or 'Sell'."
+        return "Error: side must be 'Buy' or 'Sell'."
     if not order_type_condition:
-        return "order_type must be 'Market' or 'Limit'."
+        return "Error: order_type must be 'Market' or 'Limit'."
     if not market_unit_condition:
         return "market_unit must be 'baseCoin' or 'quoteCoin'."
 
@@ -51,11 +49,7 @@ def create_place_order_proposal(
         "take_profit": take_profit,
         "stop_loss": stop_loss,
     }
-
-    storage.add_proposal(proposal["id"], proposal)
-    string = f"Successfully created place order proposal (proposal_id: {proposal['id']}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 def edit_place_order_proposal(
         proposal_id: str,
@@ -66,14 +60,12 @@ def edit_place_order_proposal(
         price: float = None, 
         market_unit: str = None, # baseCoin, quoteCoin
         take_profit: float = None, 
-        stop_loss: float = None, 
-        storage = None
+        stop_loss: float = None,
     ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    if proposal_id not in storage.proposal:
-        return f"Error: Proposal with id {proposal_id} does not exist."
-    proposal = storage.proposal[proposal_id]
+    proposal = {
+        "type" : PLACE_ORDER,
+        "id" : proposal_id
+    }
     if symbol is not None:
         if "/" not in symbol:
             return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
@@ -96,23 +88,16 @@ def edit_place_order_proposal(
         proposal["take_profit"] = take_profit
     if stop_loss is not None:
         proposal["stop_loss"] = stop_loss
-    storage.add_proposal(proposal_id, proposal)
-
-    string = f"Successfully edited place order proposal (proposal_id: {proposal_id}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 def create_amend_order_proposal(
-    symbol: str="BTC/USDT", 
     order_id: str=None,
+    symbol: str="BTC/USDT", 
     qty: float=None,
     price: float = None,
     take_profit: float = None,
     stop_loss: float = None,
-    storage = None
 ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
     
     if "/" not in symbol:
         return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
@@ -132,27 +117,21 @@ def create_amend_order_proposal(
         "take_profit": take_profit,
         "stop_loss": stop_loss,
     }
-
-    storage.add_proposal(proposal["id"], proposal)
-    string = f"Successfully created amend order proposal (proposal_id: {proposal['id']} & order_id: {proposal['order_id']}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 def edit_amend_order_proposal(
         proposal_id: str,
-        symbol: str=None,
         order_id: str=None,
+        symbol: str=None,
         qty: float=None,
         price: float = None,
         take_profit: float = None,
         stop_loss: float = None,
-        storage = None
     ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    if proposal_id not in storage.proposal:
-        return f"Proposal with id {proposal_id} does not exist."
-    proposal = storage.proposal[proposal_id]
+    proposal = {
+        "type" : AMEND_ORDER,
+        "id" : proposal_id
+    }
     if symbol is not None:
         if "/" not in symbol:
             return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
@@ -171,19 +150,12 @@ def edit_amend_order_proposal(
         proposal["take_profit"] = take_profit
     if stop_loss is not None:
         proposal["stop_loss"] = stop_loss
-    storage.add_proposal(proposal_id, proposal)
-    string = f"Successfully edited amend order proposal (proposal_id: {proposal_id} & order_id: {proposal['order_id']}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 def create_cancel_order_proposal(
-    symbol: str="BTC/USDT", 
     order_id: str=None,
-    storage = None
+    symbol: str="BTC/USDT", 
 ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    
     if "/" not in symbol:
         return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
     base_coin, quote_coin = symbol.split("/")
@@ -198,23 +170,17 @@ def create_cancel_order_proposal(
         "symbol": symbol_name,
         "order_id": order_id,
     }
-
-    storage.add_proposal(proposal["id"], proposal)
-    string = f"Successfully created cancel order proposal (proposal_id: {proposal['id']} & order_id: {proposal['order_id']}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 def edit_cancel_order_proposal(
         proposal_id: str,
-        symbol: str=None,
         order_id: str=None,
-        storage = None
+        symbol: str=None,
     ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    if proposal_id not in storage.proposal:
-        return f"Error: Proposal with id {proposal_id} does not exist."
-    proposal = storage.proposal[proposal_id]
+    proposal = {
+        "type" : CANCEL_ORDER,
+        "id" : proposal_id
+    }
     if symbol is not None:
         if "/" not in symbol:
             return f"Error: Symbol '{symbol}' is not in the correct format. Please use 'BASE/QUOTE' format, e.g., 'BTC/USDT'."
@@ -225,26 +191,14 @@ def edit_cancel_order_proposal(
         proposal["symbol"] = symbol_name
     if order_id is not None:
         proposal["order_id"] = order_id
-    storage.add_proposal(proposal_id, proposal)
-    string = f"Successfully edited cancel order proposal (proposal_id: {proposal_id} & order_id: {proposal['order_id']}):\n"
-    string += json.dumps(proposal, indent=4)
-    return string
+    return proposal
 
 
 def delete_proposal(
     proposal_id: str,
-    storage = None
 ):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    if proposal_id not in storage.proposal:
-        return f"Error: Proposal with id {proposal_id} does not exist."
-    del storage.proposal[proposal_id]
-    return f"Successfully deleted proposal with id {proposal_id}."
-
-def show_proposal(storage = None):
-    if storage is None:
-        raise ValueError("ProposalStorage instance is required.")
-    string = "Current proposal:\n"
-    string += str(storage)
-    return string
+    proposal = {
+        "type" : CANCEL_PROPOSAL,
+        "id" : proposal_id
+    }
+    return proposal

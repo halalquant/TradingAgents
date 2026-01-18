@@ -39,8 +39,6 @@ from tradingagents.agents.utils.agent_utils import (
     get_insider_transactions,
     get_global_news,
     get_fear_and_greed,
-    get_account_balance,
-    make_get_open_orders
 )
 
 from .conditional_logic import ConditionalLogic
@@ -48,17 +46,18 @@ from .setup import GraphSetup
 from .propagation import Propagator
 from .reflection import Reflector
 from .signal_processing import SignalProcessor
-from .proposal import ProposalStorage
 
 from tradingagents.agents.utils.agent_utils import (
-    make_create_place_order_proposal,
-    make_edit_place_order_proposal,
-    make_create_amend_order_proposal,
-    make_edit_amend_order_proposal,
-    make_create_cancel_order_proposal,
-    make_edit_cancel_order_proposal,
-    make_delete_proposal
+    create_place_order_proposal,
+    edit_place_order_proposal,
+    create_amend_order_proposal,
+    edit_amend_order_proposal,
+    create_cancel_order_proposal,
+    edit_cancel_order_proposal,
+    delete_proposal
 )
+
+import pickle
 
 
 class TradingAgentsGraph:
@@ -66,7 +65,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals", "profile"],
+        selected_analysts=["market", "social", "news", "fundamentals"],
         debug=False,
         config: Dict[str, Any] = None,
     ):
@@ -109,9 +108,6 @@ class TradingAgentsGraph:
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
 
-        # Initialize proposal storage
-        self.proposal_storage = ProposalStorage()
-
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
 
@@ -127,7 +123,6 @@ class TradingAgentsGraph:
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
-            self.proposal_storage
         )
 
         self.propagator = Propagator()
@@ -183,42 +178,32 @@ class TradingAgentsGraph:
                     # get_income_statement,
                 ]
             ),
-            "profile": ToolNode(
-                [
-                    # Profile analysis tools can be added here
-                    get_account_balance,
-                    make_get_open_orders(self.proposal_storage),
-                ]
-            ),
             "trader" : ToolNode(
                 [
-                    make_create_place_order_proposal(self.proposal_storage),
-                    make_edit_place_order_proposal(self.proposal_storage),
-                    make_create_amend_order_proposal(self.proposal_storage),
-                    make_edit_amend_order_proposal(self.proposal_storage),
-                    make_create_cancel_order_proposal(self.proposal_storage),
-                    make_edit_cancel_order_proposal(self.proposal_storage),
-                    make_delete_proposal(self.proposal_storage)
+                    create_place_order_proposal,
+                    edit_place_order_proposal,
+                    create_amend_order_proposal,
+                    edit_amend_order_proposal,
+                    create_cancel_order_proposal,
+                    edit_cancel_order_proposal,
+                    delete_proposal
                 ]
             ),
             "risk_manager" : ToolNode(
                 [
-                    make_create_place_order_proposal(self.proposal_storage),
-                    make_edit_place_order_proposal(self.proposal_storage),
-                    make_create_amend_order_proposal(self.proposal_storage),
-                    make_edit_amend_order_proposal(self.proposal_storage),
-                    make_create_cancel_order_proposal(self.proposal_storage),
-                    make_edit_cancel_order_proposal(self.proposal_storage),
-                    make_delete_proposal(self.proposal_storage)
+                    create_place_order_proposal,
+                    edit_place_order_proposal,
+                    create_amend_order_proposal,
+                    edit_amend_order_proposal,
+                    create_cancel_order_proposal,
+                    edit_cancel_order_proposal,
+                    delete_proposal
                 ]
             )
         }
 
-    def propagate(self, ticker, trade_date):
+    def propagate(self, ticker, trade_date, state_path=None):
         """Run the trading agents graph for a coin pair on a specific date."""
-
-        # empty proposal storage
-        self.proposal_storage.clear_proposals()
 
         self.ticker = ticker
 
@@ -237,6 +222,9 @@ class TradingAgentsGraph:
                 else:
                     chunk["messages"][-1].pretty_print()
                     trace.append(chunk)
+                if state_path:
+                    with open(state_path, 'wb') as fp:
+                        pickle.dump(chunk, fp)
 
             final_state = trace[-1]
         else:
@@ -250,7 +238,7 @@ class TradingAgentsGraph:
         self._log_state(trade_date, final_state)
 
         # Return decision and processed signal
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        return final_state, final_state["final_trade_decision"] #self.process_signal(final_state["final_trade_decision"])
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -261,7 +249,6 @@ class TradingAgentsGraph:
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
             "fundamentals_report": final_state["fundamentals_report"],
-            "profile_report": final_state["profile_report"],
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],

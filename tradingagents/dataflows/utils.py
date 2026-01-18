@@ -37,3 +37,8 @@ def get_next_weekday(date):
         return next_weekday
     else:
         return date
+
+PLACE_ORDER = "place_order"
+AMEND_ORDER = "amend_order"
+CANCEL_ORDER = "cancel_order"
+CANCEL_PROPOSAL = "cancel_proposal"

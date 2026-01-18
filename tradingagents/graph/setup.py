@@ -25,7 +25,6 @@ class GraphSetup:
         invest_judge_memory,
         risk_manager_memory,
         conditional_logic: ConditionalLogic,
-        proposal_storage
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -37,10 +36,9 @@ class GraphSetup:
         self.invest_judge_memory = invest_judge_memory
         self.risk_manager_memory = risk_manager_memory
         self.conditional_logic = conditional_logic
-        self.proposal_storage = proposal_storage
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals", "profile"]
+        self, selected_analysts=["market", "social", "news", "fundamentals"]
     ):
         """Set up and compile the agent workflow graph.
 
@@ -50,7 +48,6 @@ class GraphSetup:
                 - "social": Social media analyst
                 - "news": News analyst
                 - "fundamentals": Fundamentals analyst
-                - "profile": Profile analyst
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
@@ -59,6 +56,7 @@ class GraphSetup:
         analyst_nodes = {}
         delete_nodes = {}
         tool_nodes = {}
+        apply_proposal_nodes = {}
 
         if "market" in selected_analysts:
             analyst_nodes["market"] = create_market_analyst(
@@ -87,13 +85,6 @@ class GraphSetup:
             )
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
-        
-        if "profile" in selected_analysts:
-            analyst_nodes["profile"] = create_profile_analyst(
-                self.quick_thinking_llm, list(self.tool_nodes["profile"]._tools_by_name.values()) #self.tool_nodes["profile"]
-            )
-            delete_nodes["profile"] = create_msg_delete()
-            tool_nodes["profile"] = self.tool_nodes["profile"]
 
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
@@ -105,19 +96,21 @@ class GraphSetup:
         research_manager_node = create_research_manager(
             self.deep_thinking_llm, self.invest_judge_memory
         )
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory, list(self.tool_nodes["trader"]._tools_by_name.values()), self.proposal_storage)
+        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory, list(self.tool_nodes["trader"]._tools_by_name.values()))
         delete_nodes["trader"] = create_msg_delete()
         tool_nodes["trader"] = self.tool_nodes["trader"]
+        apply_proposal_nodes["trader"] = create_apply_proposal("trader")
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
         neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
         safe_analyst = create_safe_debator(self.quick_thinking_llm)
         risk_manager_node = create_risk_manager(
-            self.deep_thinking_llm, self.risk_manager_memory, list(self.tool_nodes["risk_manager"]._tools_by_name.values()), self.proposal_storage
+            self.deep_thinking_llm, self.risk_manager_memory, list(self.tool_nodes["risk_manager"]._tools_by_name.values())
         )
         delete_nodes["risk_manager"] = create_msg_delete()
         tool_nodes["risk_manager"] = self.tool_nodes["risk_manager"]
+        apply_proposal_nodes["risk_manager"] = create_apply_proposal("risk_manager")
 
         # Create workflow
         workflow = StateGraph(AgentState)
@@ -140,6 +133,7 @@ class GraphSetup:
             "Msg Clear Trader", delete_nodes["trader"]
         )
         workflow.add_node("tools_trader", tool_nodes["trader"])
+        workflow.add_node("apply_proposal_trader", apply_proposal_nodes["trader"])
         
         workflow.add_node("Risky Analyst", risky_analyst)
         workflow.add_node("Neutral Analyst", neutral_analyst)
@@ -150,6 +144,7 @@ class GraphSetup:
             "Msg Clear Risk Judge", delete_nodes["risk_manager"]
         )
         workflow.add_node("tools_risk_manager", tool_nodes["risk_manager"])
+        workflow.add_node("apply_proposal_risk_manager", apply_proposal_nodes["risk_manager"])
 
         # Define edges
         # Start with the first analyst
@@ -194,15 +189,17 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
             },
         )
-        workflow.add_edge("Research Manager", "Trader")
 
+        workflow.add_edge("Research Manager", "Trader")
         workflow.add_conditional_edges(
             "Trader",
             self.conditional_logic.should_continue_trader,
             ["tools_trader", "Msg Clear Trader"],
         )
-        workflow.add_edge("tools_trader", "Trader")
+        workflow.add_edge("tools_trader", "apply_proposal_trader")
+        workflow.add_edge("apply_proposal_trader", "Trader")
         workflow.add_edge("Msg Clear Trader", "Risky Analyst")
+
 
         workflow.add_conditional_edges(
             "Risky Analyst",
@@ -234,7 +231,8 @@ class GraphSetup:
             self.conditional_logic.should_continue_risk_manager,
             ["tools_risk_manager", "Msg Clear Risk Judge"],
         )
-        workflow.add_edge("tools_risk_manager", "Risk Judge")
+        workflow.add_edge("tools_risk_manager", "apply_proposal_risk_manager")
+        workflow.add_edge("apply_proposal_risk_manager", "Risk Judge")
         workflow.add_edge("Msg Clear Risk Judge", END)
 
         # Compile and return

@@ -6,6 +6,10 @@ from tradingagents.agents.utils.agent_states import (
     InvestDebateState,
     RiskDebateState,
 )
+from tradingagents.agents.utils.profile_tools import (
+    get_account_balance,
+    get_open_orders
+)
 
 
 class Propagator:
@@ -39,7 +43,10 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
-            "profile_report": "",
+            "trader_proposal" : {},
+            "risk_manager_proposal" : {},
+            "account_balance" : get_account_balance(ticker),
+            "open_orders" : get_open_orders(ticker)
         }
 
     def get_graph_args(self) -> Dict[str, Any]:
