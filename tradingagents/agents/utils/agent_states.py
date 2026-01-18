@@ -57,7 +57,6 @@ class AgentState(MessagesState):
         str, "Report from the News Researcher of current world affairs"
     ]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
-    profile_report: Annotated[str, "Report from the Profile Analyst"]
 
     # researcher team discussion step
     investment_debate_state: Annotated[
@@ -75,3 +74,6 @@ class AgentState(MessagesState):
 
     trader_proposal: Annotated[dict, "Trader Proposals"]
     risk_manager_proposal: Annotated[dict, "Risk Judge Proposals"]
+
+    account_balance: Annotated[str, "Account balance"]
+    open_orders: Annotated[str, "Open orders"]

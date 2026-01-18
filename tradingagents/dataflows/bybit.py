@@ -96,12 +96,25 @@ def get_account_balance(symbol: str) -> dict:
     
     total_equity = sum(asset.get("usdValue", 0.0) for asset in result.values())
 
-    report = f"# Account Balance Report for {base_coin}/{quote_coin}\n"
-    report += f"** Total Equity: ${total_equity} **\n"
-    report += f"## {quote_coin} (Quote) Details:\n"
-    report += json.dumps(result.get(quote_coin, {}), indent=2) + "\n"
-    report += f"## {base_coin} (Base) Details:\n"
-    report += json.dumps(result.get(base_coin, {}), indent=2) + "\n"
+    # report = f"# Account Balance Report for {base_coin}/{quote_coin}\n"
+    # report += f"** Total Equity: ${total_equity} **\n"
+    # report += f"## {quote_coin} (Quote) Details:\n"
+    # report += json.dumps(result.get(quote_coin, {}), indent=2) + "\n"
+    # report += f"## {base_coin} (Base) Details:\n"
+    # report += json.dumps(result.get(base_coin, {}), indent=2) + "\n"
+    # return report
+    # return result
+    base_info = result.get(base_coin, {})
+    quote_info = result.get(quote_coin, {})
+
+    base_info["symbol"] = base_coin
+    quote_info["symbol"] = quote_coin
+
+    report = {
+        "total_equity" : total_equity,
+        "base" : base_info,
+        "quote" : quote_info
+    }
     return report
 
 def get_symbol(base_coin: str, quote_coin: str) -> str:
@@ -138,7 +151,7 @@ def get_symbol(base_coin: str, quote_coin: str) -> str:
     # 3. Fallback/Error handling
     return None
 
-def get_open_orders(symbol: str, storage) -> str:
+def get_open_orders(symbol: str) -> dict:
     """
     Fetches active orders and returns a text report analyzing capital lock-up and order age.
     """
@@ -171,12 +184,11 @@ def get_open_orders(symbol: str, storage) -> str:
         orders[i]["createdTime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(orders[i]["createdTime"]/1000))
         orders[i]["updatedTime"] = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(orders[i]["updatedTime"]/1000))
 
-    report = f"# Open Orders for {symbol.upper()}\n"
-    report += json.dumps(orders, indent=2)
+    # report = f"# Open Orders for {symbol.upper()}\n"
+    # report += json.dumps(orders, indent=2)
 
-    storage.order = orders
-
-    return report
+    # return report
+    return orders
 
 
 def get_market_data(symbol:str, start_date: str, end_date: str) -> str:

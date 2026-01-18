@@ -43,14 +43,6 @@ class ConditionalLogic:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
     
-    def should_continue_profile(self, state: AgentState):
-        """Determine if profile analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools_profile"
-        return "Msg Clear Profile"
-    
     def should_continue_trader(self, state: AgentState):
         """Determine if trader should continue."""
         messages = state["messages"]

@@ -70,7 +70,6 @@ The system is modular, research-oriented, and supports rapid adaptation to new c
 - **Sentiment Analyst**: Analyzes crypto-specific social media, news, and sentiment signals (e.g., Twitter, Reddit, CoinDesk).
 - **News Analyst**: Monitors global and crypto news, macro events, and regulatory changes impacting digital assets.
 - **Technical Analyst**: Applies crypto-relevant indicators (e.g., MACD, RSI, Bollinger Bands, funding rates) to spot trends and signals.
-- **Profile Analyst**: Tracks user portfolio, balances, open orders, and capital allocation for portfolio-aware trading.
 
 <p align="center">
   <img src="assets/analyst.png" width="100%" style="display: inline-block; margin: 0 2%;">

@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import functools
 
-def create_trader(llm, memory, tools, storage):
+def create_trader(llm, memory, tools):
     def trader_node(state, name):
         # 1. Extract State Data
         ticker = state.get("ticker_of_interest", "")
@@ -10,10 +10,11 @@ def create_trader(llm, memory, tools, storage):
         sentiment_report = state.get("sentiment_report", "")
         news_report = state.get("news_report", "")
         fundamentals_report = state.get("fundamentals_report", "")
-        profile_report = state.get("profile_report", "")
+        account_balance = state.get("account_balance", "")
+        open_orders = state.get("open_orders", "")
         
         # 2. Context Construction
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}\n\n{profile_report}"
+        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         
         # 3. Memory Retrieval
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -51,7 +52,8 @@ def create_trader(llm, memory, tools, storage):
             f"Review the following investment plan and reports:\n"
             f"**Proposed Investment Plan:** {investment_plan}\n"
             f"**Market Context:** {pair_context}\n\n"
-            f"**Current Open Orders in Exchange:** {storage.order}\n\n"
+            f"**Current Account Balance:** {account_balance}\n\n"
+            f"**Current Open Orders in Exchange:** {open_orders}\n\n"
             
             f"### Past Reflections\n"
             f"Reflect on these lessons from similar past situations:\n{past_memory_str}\n\n"
@@ -60,7 +62,6 @@ def create_trader(llm, memory, tools, storage):
             f"1. Analyze the inputs.\n"
             f"2. Decide whether to Buy, Sell, or Hold.\n"
             f"3. If Buying or Selling, **CALL THE APPROPRIATE TOOL** with the correct quantity and price parameters.\n"
-            f"4. Provide a brief summary of your decision logic."
         )
 
         # 6. Construct Prompt Template
@@ -74,6 +75,7 @@ def create_trader(llm, memory, tools, storage):
                     " will help where you left off. Execute what you can to make progress."
                     " You have access to the following tools: {tool_names}.\n\n"
                     "{system_message}"
+                    "Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -92,15 +94,11 @@ def create_trader(llm, memory, tools, storage):
         trader_investment_plan = ""
         if len(result.tool_calls) == 0:
             trader_investment_plan = result.content
-        else:
-            # If a tool was called, we might still want to capture any reasoning content the LLM outputted alongside the tool call
-            trader_investment_plan = result.content
 
         return {
             "messages": [result],
             "trader_investment_plan": trader_investment_plan,
             "sender": name,
-            "trader_proposal" : storage.__str__()
         }
 
     return functools.partial(trader_node, name="Trader")
