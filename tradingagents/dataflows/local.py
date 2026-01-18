@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import requests
 from .config import DATA_DIR
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 import json
 from .reddit_utils import fetch_top_from_category
@@ -477,26 +477,59 @@ def get_reddit_company_news(
 
 
 def get_fear_and_greed(
+    current_date: Annotated[str, "YYYY-MM-DD, default is today"] | None = None,
     look_back_days: Annotated[int, "how many days to look back"] = 30,
 ) -> str:
     """
-    Retrieve the latest Fear and Greed Index.
-    Args:
-        look_back_days (int): How many days to look back, default is 30
-    Returns:
-        str: A formatted string containing the Fear and Greed Index.
+    Retrieve Fear and Greed Index data from (current_date - look_back_days) to current_date.
     """
 
-    url = f"https://api.alternative.me/fng/?limit={look_back_days}&date_format=world"
-    response = requests.get(url)
+    # Determine current date
+    if current_date is None:
+        try:
+            # Get latest data from API
+            resp = requests.get("https://api.alternative.me/fng/?date_format=world&limit=1")
+            resp.raise_for_status()
+            latest_entry = resp.json().get("data", [{}])[0]
+            current_dt = datetime.strptime(latest_entry.get("timestamp"), "%d-%m-%Y").replace(tzinfo=timezone.utc)
+        except Exception:
+            # Fallback to system time
+            current_dt = datetime.now(timezone.utc)
+    else:
+        current_dt = datetime.strptime(current_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
+    start_dt = current_dt - timedelta(days=look_back_days)
+
+    # Compute days between current_dt and API latest date
+    try:
+        resp = requests.get("https://api.alternative.me/fng/?date_format=world&limit=1")
+        resp.raise_for_status()
+        latest_entry = resp.json().get("data", [{}])[0]
+        latest_dt = datetime.strptime(latest_entry.get("timestamp"), "%d-%m-%Y").replace(tzinfo=timezone.utc)
+        days_since_current = (latest_dt.date() - current_dt.date()).days
+    except Exception:
+        days_since_current = 0
+
+    # Fetch enough data to cover the requested range
+    fetch_limit = look_back_days + days_since_current + 5  # buffer
+    url = f"https://api.alternative.me/fng/?limit={fetch_limit}&date_format=world"
+
+    response = requests.get(url)
+    response.raise_for_status()
     data = response.json().get("data", [])
 
-    if len(data) == 0:
+    if not data:
         return ""
 
     result_str = "## Fear and Greed Index Data:\n\n"
+
     for entry in data:
-        result_str += f"### Date: {entry['timestamp']}\nFear and Greed Index: {entry['value']}\nClassification: {entry['value_classification']}\n\n"
+        entry_dt = datetime.strptime(entry["timestamp"], "%d-%m-%Y").replace(tzinfo=timezone.utc)
+        if start_dt <= entry_dt <= current_dt:
+            result_str += (
+                f"### Date: {entry_dt.strftime('%Y-%m-%d')}\n"
+                f"Fear and Greed Index: {entry['value']}\n"
+                f"Classification: {entry['value_classification']}\n\n"
+            )
 
     return result_str
