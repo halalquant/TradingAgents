@@ -261,6 +261,7 @@ class TradingAgentsGraph:
                 ],
             },
             "trader_investment_decision": final_state["trader_investment_plan"],
+            "trader_proposal": final_state["trader_proposal"],
             "risk_debate_state": {
                 "risky_history": final_state["risk_debate_state"]["risky_history"],
                 "safe_history": final_state["risk_debate_state"]["safe_history"],
@@ -268,6 +269,7 @@ class TradingAgentsGraph:
                 "history": final_state["risk_debate_state"]["history"],
                 "judge_decision": final_state["risk_debate_state"]["judge_decision"],
             },
+            "risk_manager_proposal": final_state["risk_manager_proposal"],
             "investment_plan": final_state["investment_plan"],
             "final_trade_decision": final_state["final_trade_decision"],
         }

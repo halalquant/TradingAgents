@@ -21,10 +21,10 @@ updates = {
 update_config(updates)
 
 # Initialize with custom config
-ta = TradingAgentsGraph(debug=True, config=get_config())
+ta = TradingAgentsGraph(debug=False, config=get_config())
 
 # forward propagate
-final_state, decision = ta.propagate("BTC/USDT", "2026-01-18", "./state.pkl")
+final_state, decision = ta.propagate("BTC/USDT", "2026-01-21", "./state.pkl")
 print("DECISION:")
 print(decision)
 print("TRADER PROPOSAL:")

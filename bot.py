@@ -123,7 +123,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job_id = context.args[0]
 
     response = get_status(user_id, job_id)
-    logger.info(f"Report response for user {user_id}, job {job_id}: {response}")
+    logger.info(f"Report response for user {user_id}, job {job_id}")
 
     if not response:
         await update.message.reply_text("❌ Job not found. or error occurred.")
@@ -137,12 +137,33 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if response.status == AnalysisStatus.DONE:
+        # Parse the result to extract trader_proposal
+        import json
+        trader_proposal_json = None
+        try:
+            result_data = json.loads(response.result) if isinstance(response.result, str) else response.result
+            trader_proposal = result_data.get("trader_proposal", {})
+            if trader_proposal:
+                trader_proposal_json = json.dumps(trader_proposal, indent=2)
+        except:
+            pass
+        
+        # Send proposal in chat if available
+        if trader_proposal_json:
+            await update.message.reply_text(
+                f"📊 *Analysis Completed*\n\n"
+                f"*Trader Proposal:*\n"
+                f"```json\n{trader_proposal_json}\n```",
+                parse_mode="Markdown"
+            )
+        
+        # Send full report as file
         await send_text_as_file(
             bot=context.bot,
             chat_id=update.effective_chat.id,
             content=response.result,
-            filename=f"analysis_{job_id}.md",
-            caption="📊 Analysis completed. Full report attached.",
+            filename=f"analysis_{job_id}.json",
+            caption="📊 Full analysis report attached.",
         )
         return
 

@@ -4,6 +4,7 @@ from tradingagents.domain.response import EnqueueAnalysisResponse
 from rq import get_current_job
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.dataflows.config import get_config
+import json
 
 trading_agent = None
 
@@ -34,8 +35,16 @@ def process_job(user_id: str, symbol: str, date: str):
 
         print(f"INFO: Decision for job-id {job.id}: {decision}")
 
-        # Save the final result
-        redis_repo.save_result(job_id=job.id, final_trade=final_state["final_trade_decision"])
+        # Get the logged state (JSON-serializable) from the trading agent
+        logged_state = get_trading_agent().log_states_dict.get(str(date))
+        full_state_json = json.dumps(logged_state, indent=2) if logged_state else None
+
+        # Save the final result with full state
+        redis_repo.save_result(
+            job_id=job.id, 
+            final_trade=final_state["final_trade_decision"],
+            full_state=full_state_json
+        )
         # Update status to DONE
         redis_repo.update_status_analysis_meta(user_id=user_id, job_id=job.id, status=AnalysisStatus.DONE)
         
@@ -102,6 +111,17 @@ def get_status(user_id: str, job_id: str) -> JobResultStatus:
     print(f"INFO: Checking status for job-id {job_id}")
     meta = redis_repo.get_analysis_meta(user_id, job_id)
     result = redis_repo.get_result(job_id)
+    
+    # Extract the appropriate result format
+    final_result = None
+    if result:
+        if isinstance(result, dict):
+            # New format: prefer full_state JSON, fallback to final_trade
+            final_result = result.get("full_state") or result.get("final_trade")
+        else:
+            # Old format: just a string
+            final_result = result
+    
     if meta:
-        return JobResultStatus(status=meta.status, result=result, message=meta.message)
+        return JobResultStatus(status=meta.status, result=final_result, message=meta.message)
     return JobResultStatus(status=AnalysisStatus.DONE, result=None, message="Job not found")

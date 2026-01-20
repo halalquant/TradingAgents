@@ -94,14 +94,35 @@ class RedisRepo:
             created_at=float(data["created_at"]) if "created_at" in data else 0.0,
         )
 
-    def save_result(self, job_id: str, final_trade: str, ttl: int = 7 * 24 * 3600):
+    def save_result(self, job_id: str, final_trade: str, full_state: str = None, ttl: int = 7 * 24 * 3600):
         '''
-        Save the final trading decision result to Redis. No expiration by default.
+        Save the final trading proposal result to Redis.
+        Optionally saves the full state as JSON string.
         '''
-        self.redis.set(self._result_key(job_id), final_trade, ex=ttl)
+        key = self._result_key(job_id)
+        if full_state:
+            self.redis.hset(key, mapping={
+                "final_trade": final_trade,
+                "full_state": full_state
+            })
+        else:
+            self.redis.set(key, final_trade)
+        self.redis.expire(key, ttl)
 
-    def get_result(self, job_id: str) -> str | None:
-        return self.redis.get(self._result_key(job_id))
+    def get_result(self, job_id: str) -> dict | str | None:
+        key = self._result_key(job_id)
+        # Check if it's a hash (new format with full_state)
+        if self.redis.type(key) == b'hash':
+            data = self.redis.hgetall(key)
+            if not data:
+                return None
+            decoded = self._decode_hash(data)
+            return {
+                "final_trade": decoded.get("final_trade"),
+                "full_state": decoded.get("full_state")
+            }
+        # Otherwise, it's a string (old format, just final_trade)
+        return self.redis.get(key)
 
 
 redis_repo = RedisRepo(get_redis_client())
