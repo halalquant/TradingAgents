@@ -53,6 +53,7 @@ def bybit_v5_request(method: str, path: str, params: Optional[Dict] = None, body
     }
 
     # Make request
+    print(f"Bybit V5 Request: {method} {url} Payload: {payload}")
     if method.upper() == "GET":
         response = requests.get(url, headers=headers)
     else:
@@ -664,28 +665,6 @@ def get_order_status(order_id: str, category: str = "spot") -> Dict:
     return orders[0] if orders else {}
 
 
-def cancel_order(order_id: str, symbol: str, category: str = "spot") -> Dict:
-    """
-    Cancel an existing order.
-    
-    Args:
-        order_id: Order ID to cancel
-        symbol: Trading pair symbol
-        category: Trading category ("spot", "linear", "inverse")
-        
-    Returns:
-        Dict containing cancellation result
-    """
-    body = {
-        "category": category.lower(),
-        "symbol": symbol.upper(),
-        "orderId": order_id
-    }
-    
-    data = bybit_v5_request("POST", "/v5/order/cancel", body=body)
-    return data.get("result", {})
-
-
 def get_order_history(
     symbol: Optional[str] = None, 
     category: str = "spot",
@@ -737,6 +716,7 @@ def place_order(
     order_type: str,
     qty: float,
     price: Optional[float] = None,
+    market_unit: Optional[str] = None,
     stop_loss: Optional[float] = None,
     take_profit: Optional[float] = None,
     sl_limit_price: Optional[float] = None,
@@ -759,6 +739,7 @@ def place_order(
         order_type: Order type ("Market", "Limit")
         qty: Order quantity
         price: Order price (required for Limit orders)
+        market_unit: For Market orders, specify "baseCoin" (qty in BTC) or "quoteCoin" (qty in USDT)
         stop_loss: Stop loss trigger price
         take_profit: Take profit trigger price
         sl_limit_price: Stop loss limit price (for limit SL orders)
@@ -808,6 +789,10 @@ def place_order(
         "timeInForce": time_in_force,
     }
     
+    # Add marketUnit for Market orders in spot trading
+    if order_type.upper() == "MARKET" and category.lower() == "spot" and market_unit:
+        body["marketUnit"] = market_unit
+    
     # Add price for limit orders
     if price is not None:
         body["price"] = str(price)
@@ -846,52 +831,106 @@ def place_order(
     except Exception as e:
         raise ValueError(f"Failed to place order: {str(e)}")
 
-def place_spot_order_with_sl_tp(
-    symbol: str,
-    side: str,
-    qty: float,
-    price: Optional[float] = None,
-    stop_loss_price: Optional[float] = None,
-    take_profit_price: Optional[float] = None,
-    sl_limit_price: Optional[float] = None,
-    tp_limit_price: Optional[float] = None,
-    sl_order_type: str = "Market",
-    tp_order_type: str = "Market",
-    order_type: str = "Limit",
-    time_in_force: str = "PostOnly"
-) -> Dict:
+def cancel_order(order_id: str, symbol: str, category: str = "spot") -> Dict:
     """
-    Convenience function to place a spot order with stop loss and take profit.
+    Cancel an existing order.
     
     Args:
-        symbol: Trading pair symbol (e.g., "BTCUSDT")
-        side: Order side ("Buy" or "Sell")
-        qty: Order quantity
-        price: Limit price (None for market orders)
-        stop_loss_price: Stop loss trigger price
-        take_profit_price: Take profit trigger price
-        sl_limit_price: Stop loss limit price (for limit SL orders)
-        tp_limit_price: Take profit limit price (for limit TP orders)
-        sl_order_type: Stop loss order type ("Market" or "Limit")
-        tp_order_type: Take profit order type ("Market" or "Limit")
-        order_type: "Limit" or "Market"
-        time_in_force: Time in force ("GTC", "IOC", "FOK", "PostOnly")
+        order_id: Order ID to cancel
+        symbol: Trading pair symbol
+        category: Trading category ("spot", "linear", "inverse")
         
     Returns:
-        Dict containing order result
+        Dict containing cancellation result
     """
-    return place_order(
-        symbol=symbol,
-        side=side,
-        order_type=order_type,
-        qty=qty,
-        price=price,
-        stop_loss=stop_loss_price,
-        take_profit=take_profit_price,
-        sl_limit_price=sl_limit_price,
-        tp_limit_price=tp_limit_price,
-        sl_order_type=sl_order_type,
-        tp_order_type=tp_order_type,
-        time_in_force=time_in_force,
-        category="spot"
-    )
+    body = {
+        "category": category.lower(),
+        "symbol": symbol.upper(),
+        "orderId": order_id
+    }
+    
+    data = bybit_v5_request("POST", "/v5/order/cancel", body=body)
+    return data.get("result", {})
+
+
+def amend_order(
+    order_id: str,
+    symbol: str,
+    qty: Optional[float] = None,
+    price: Optional[float] = None,
+    stop_loss: Optional[float] = None,
+    take_profit: Optional[float] = None,
+    sl_limit_price: Optional[float] = None,
+    tp_limit_price: Optional[float] = None,
+    sl_order_type: Optional[str] = None,
+    tp_order_type: Optional[str] = None,
+    category: str = "spot"
+) -> Dict:
+    """
+    Amend (modify) an existing order. Only unfilled or partially filled orders can be amended.
+    
+    Args:
+        order_id: Order ID to amend
+        symbol: Trading pair symbol (e.g., "BTCUSDT")
+        qty: New order quantity (optional)
+        price: New order price (optional, for limit orders)
+        stop_loss: New stop loss trigger price (optional)
+        take_profit: New take profit trigger price (optional)
+        sl_limit_price: New stop loss limit price (optional, for limit SL orders)
+        tp_limit_price: New take profit limit price (optional, for limit TP orders)
+        sl_order_type: Stop loss order type ("Market" or "Limit", optional)
+        tp_order_type: Take profit order type ("Market" or "Limit", optional)
+        category: Trading category ("spot", "linear", "inverse")
+        
+    Returns:
+        Dict containing amendment result
+        
+    Raises:
+        ValueError: If no parameters to amend are provided
+        
+    Note:
+        - At least one parameter (qty, price, stop_loss, or take_profit) must be provided
+        - For spot trading, only qty and price can be amended
+        - Stop loss and take profit amendments are available for derivatives
+    """
+    # Validate that at least one amendment parameter is provided
+    if all(param is None for param in [qty, price, stop_loss, take_profit]):
+        raise ValueError("At least one parameter (qty, price, stop_loss, or take_profit) must be provided")
+    
+    # Build amendment body
+    body = {
+        "category": category.lower(),
+        "symbol": symbol.upper(),
+        "orderId": order_id
+    }
+    
+    # Add parameters if provided
+    if qty is not None:
+        if qty <= 0:
+            raise ValueError("qty must be greater than 0")
+        body["qty"] = str(qty)
+    
+    if price is not None:
+        body["price"] = str(price)
+    
+    # Add stop loss amendments
+    if stop_loss is not None:
+        body["stopLoss"] = str(stop_loss)
+        if sl_order_type:
+            body["slOrderType"] = sl_order_type.capitalize()
+        if sl_limit_price is not None and sl_order_type and sl_order_type.upper() == "LIMIT":
+            body["slLimitPrice"] = str(sl_limit_price)
+    
+    # Add take profit amendments
+    if take_profit is not None:
+        body["takeProfit"] = str(take_profit)
+        if tp_order_type:
+            body["tpOrderType"] = tp_order_type.capitalize()
+        if tp_limit_price is not None and tp_order_type and tp_order_type.upper() == "LIMIT":
+            body["tpLimitPrice"] = str(tp_limit_price)
+    
+    try:
+        data = bybit_v5_request("POST", "/v5/order/amend", body=body)
+        return data.get("result", {})
+    except Exception as e:
+        raise ValueError(f"Failed to amend order: {str(e)}")

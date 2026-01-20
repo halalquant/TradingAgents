@@ -10,6 +10,7 @@ class AnalysisStatus(str, Enum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    EXECUTED = "executed"
 
 @dataclass
 class JobResultStatus:

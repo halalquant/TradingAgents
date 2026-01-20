@@ -8,10 +8,11 @@ from telegram.ext import (
 from io import BytesIO
 from tradingagents.domain.model import AnalysisStatus
 
-from service import enqueue_analysis, get_status
+from service import enqueue_analysis, get_status, execute_trader_proposal
 from tradingagents.config import get_config
 from tradingagents.config import settings
 from datetime import datetime
+import json
 
 # --------------------------------------------------
 # Config
@@ -76,7 +77,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 Welcome to TradingAgents Bot\n\n"
         "Commands:\n"
         "/analyze BTC/USDT – start analysis\n"
-        "/report BTC/USDT – check analysis status"
+        "/report job_id – check analysis status\n"
+        "/execute job_id – execute trader proposal"
     )
 
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,7 +110,6 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Use /report to check status.",
         parse_mode="Markdown",
     )
-
 
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -172,6 +173,50 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Analysis failed:\n{response.message}"
         )
 
+async def execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_user_whitelisted(user_id):
+        await update.message.reply_text("❌ You are not authorized to use this bot.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Usage: /execute job_id")
+        return
+
+    job_id = context.args[0]
+
+    await update.message.reply_text("⏳ Executing trader proposal...")
+
+    response = execute_trader_proposal(user_id, job_id)
+    logger.info(f"Execute response for user {user_id}, job {job_id}: {response}")
+
+    if not response.get("success"):
+        error_msg = response.get("error", "Unknown error")
+        await update.message.reply_text(f"❌ Execution failed:\n{error_msg}")
+        return
+
+    # Format execution results
+    total = response.get("total_proposals", 0)
+    executed = response.get("executed", 0)
+    failed = response.get("failed", 0)
+    
+    results_summary = (
+        f"✅ *Execution Completed*\n\n"
+        f"Total Proposals: {total}\n"
+        f"Successfully Executed: {executed}\n"
+        f"Failed: {failed}\n\n"
+    )
+
+    if response.get("results"):
+        results_json = json.dumps(response["results"], indent=2)
+        results_summary += f"*Results:*\n```json\n{results_json[:1000]}\n```\n"
+
+    if response.get("errors"):
+        errors_json = json.dumps(response["errors"], indent=2)
+        results_summary += f"\n⚠️ *Errors:*\n```json\n{errors_json[:500]}\n```"
+
+    await update.message.reply_text(results_summary, parse_mode="Markdown")
+
 
 # --------------------------------------------------
 # App
@@ -183,6 +228,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("analyze", analyze))
     app.add_handler(CommandHandler("report", report))
+    app.add_handler(CommandHandler("execute", execute))
 
     logger.info("🚀 Telegram bot started")
     app.run_polling()

@@ -4,7 +4,13 @@ from tradingagents.domain.response import EnqueueAnalysisResponse
 from rq import get_current_job
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.dataflows.config import get_config
+from tradingagents.dataflows.bybit import place_order, cancel_order, amend_order
 import json
+from tradingagents.dataflows.utils import (
+    PLACE_ORDER,
+    AMEND_ORDER,
+    CANCEL_ORDER
+)
 
 trading_agent = None
 
@@ -125,3 +131,185 @@ def get_status(user_id: str, job_id: str) -> JobResultStatus:
     if meta:
         return JobResultStatus(status=meta.status, result=final_result, message=meta.message)
     return JobResultStatus(status=AnalysisStatus.DONE, result=None, message="Job not found")
+
+
+def execute_trader_proposal(user_id: str, job_id: str) -> dict:
+    """
+    Execute trader proposals from a completed job result.
+    
+    Args:
+        user_id (str): The user ID requesting the execution.
+        job_id (str): The job ID to fetch the proposal from.
+        
+    Returns:
+        dict: Execution results containing success status, executed orders, and any errors.
+    """
+    print(f"INFO: Executing trader proposal for job-id {job_id}")
+    
+    try:
+        meta = redis_repo.get_analysis_meta(user_id, job_id)
+        
+        if not meta:
+            return {
+                "success": False,
+                "error": "Job not found",
+                "job_id": job_id
+            }
+        
+        if meta.status != AnalysisStatus.DONE:
+            return {
+                "success": False,
+                "error": f"Job is not in DONE status. Current status: {meta.status.value}",
+                "job_id": job_id,
+                "current_status": meta.status.value
+            }
+        
+        result = redis_repo.get_result(job_id)
+        
+        if not result:
+            return {
+                "success": False,
+                "error": "Job result not found",
+                "job_id": job_id
+            }
+        
+        full_state = None
+        if isinstance(result, dict):
+            full_state_str = result.get("full_state")
+            if full_state_str:
+                full_state = json.loads(full_state_str) if isinstance(full_state_str, str) else full_state_str
+        
+        if not full_state:
+            return {
+                "success": False,
+                "error": "No full_state found in job result",
+                "job_id": job_id
+            }
+        
+        trader_proposal = full_state.get("trader_proposal")
+        
+        if not trader_proposal:
+            return {
+                "success": False,
+                "error": "No trader_proposal found in job result",
+                "job_id": job_id
+            }
+        
+        if not isinstance(trader_proposal, dict):
+            return {
+                "success": False,
+                "error": "trader_proposal is not in expected format",
+                "job_id": job_id
+            }
+        
+        execution_results = []
+        errors = []
+        
+        for proposal_id, proposal_data in trader_proposal.items():
+            try:
+                proposal_type = proposal_data.get("type")
+                
+                if proposal_type == PLACE_ORDER:
+                    result = _execute_place_order(proposal_data)
+                    execution_results.append({
+                        "proposal_id": proposal_id,
+                        "type": proposal_type,
+                        "status": "success",
+                        "result": result
+                    })
+                    
+                elif proposal_type == CANCEL_ORDER:
+                    result = _execute_cancel_order(proposal_data)
+                    execution_results.append({
+                        "proposal_id": proposal_id,
+                        "type": proposal_type,
+                        "status": "success",
+                        "result": result
+                    })
+                    
+                elif proposal_type == AMEND_ORDER:
+                    result = _execute_amend_order(proposal_data)
+                    execution_results.append({
+                        "proposal_id": proposal_id,
+                        "type": proposal_type,
+                        "status": "success",
+                        "result": result
+                    })
+                    
+                else:
+                    errors.append({
+                        "proposal_id": proposal_id,
+                        "error": f"Unknown proposal type: {proposal_type}"
+                    })
+                    
+            except Exception as e:
+                errors.append({
+                    "proposal_id": proposal_id,
+                    "error": str(e)
+                })
+                print(f"ERROR: Failed to execute proposal {proposal_id}: {e}")
+        
+        execution_success = len(errors) == 0
+        
+        if execution_success:
+            redis_repo.update_status_analysis_meta(
+                user_id=user_id, 
+                job_id=job_id, 
+                status=AnalysisStatus.EXECUTED,
+                message="All proposals executed successfully"
+            )
+        
+        return {
+            "success": execution_success,
+            "job_id": job_id,
+            "total_proposals": len(trader_proposal),
+            "executed": len(execution_results),
+            "failed": len(errors),
+            "results": execution_results,
+            "errors": errors if errors else None
+        }
+        
+    except Exception as e:
+        print(f"ERROR: Failed to execute trader proposal for job-id {job_id}: {e}")
+        return {
+            "success": False,
+            "error": f"Exception occurred: {str(e)}",
+            "job_id": job_id
+        }
+
+
+def _execute_place_order(proposal: dict) -> dict:
+    """Execute a place_order proposal."""
+    return place_order(
+        symbol=proposal.get("symbol"),
+        side=proposal.get("side"),
+        order_type=proposal.get("order_type"),
+        qty=proposal.get("qty"),
+        price=proposal.get("price"),
+        market_unit=proposal.get("market_unit"),
+        stop_loss=proposal.get("stop_loss"),
+        take_profit=proposal.get("take_profit"),
+        category=proposal.get("category", "spot")
+    )
+
+
+def _execute_cancel_order(proposal: dict) -> dict:
+    """Execute a cancel_order proposal."""
+    return cancel_order(
+        order_id=proposal.get("order_id"),
+        symbol=proposal.get("symbol"),
+        category=proposal.get("category", "spot")
+    )
+
+
+def _execute_amend_order(proposal: dict) -> dict:
+    """Execute an amend_order proposal."""
+    return amend_order(
+        order_id=proposal.get("order_id"),
+        symbol=proposal.get("symbol"),
+        qty=proposal.get("qty"),
+        price=proposal.get("price"),
+        stop_loss=proposal.get("stop_loss"),
+        take_profit=proposal.get("take_profit"),
+        category=proposal.get("category", "spot")
+    )
