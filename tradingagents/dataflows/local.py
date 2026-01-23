@@ -494,7 +494,7 @@ def get_fear_and_greed(
             current_dt = datetime.strptime(latest_entry.get("timestamp"), "%d-%m-%Y").replace(tzinfo=timezone.utc)
         except Exception:
             # Fallback to system time
-            current_dt = datetime.now(timezone.utc)
+            current_dt = datetime.now(tz=timezone.utc)
     else:
         current_dt = datetime.strptime(current_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 

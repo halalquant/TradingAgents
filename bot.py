@@ -11,7 +11,7 @@ from tradingagents.domain.model import AnalysisStatus
 from service import enqueue_analysis, get_status, execute_trader_proposal
 from tradingagents.config import get_config
 from tradingagents.config import settings
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 # --------------------------------------------------
@@ -96,7 +96,7 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ The symbol {symbol} is not available for analysis.")
         return
 
-    response = enqueue_analysis(user_id=user_id, symbol=symbol, date=datetime.now().strftime("%Y-%m-%d"))
+    response = enqueue_analysis(user_id=user_id, symbol=symbol, date=datetime.now(tz=timezone.utc).strftime("%Y-%m-%d"))
     logger.info(f"Analyze response for user {user_id}, symbol {symbol}: {response}")
 
     if response.status == "error":

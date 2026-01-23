@@ -1,6 +1,7 @@
 import json
 from typing import Optional
 import datetime
+from datetime import timezone
 import typer
 from pathlib import Path
 from functools import wraps
@@ -75,11 +76,11 @@ class MessageBuffer:
         }
 
     def add_message(self, message_type, content):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
         self.messages.append((timestamp, message_type, content))
 
     def add_tool_call(self, tool_name, args):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.datetime.now(tz=timezone.utc).strftime("%H:%M:%S")
         self.tool_calls.append((timestamp, tool_name, args))
 
     def update_agent_status(self, agent, status):
@@ -447,7 +448,7 @@ def get_user_selections():
     selected_ticker = get_ticker()
 
     # Step 2: Analysis date
-    default_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    default_date = datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     console.print(
         create_question_box(
             "Step 2: Analysis Date",
@@ -514,12 +515,12 @@ def get_analysis_date():
     """Get the analysis date from user input."""
     while True:
         date_str = typer.prompt(
-            "", default=datetime.datetime.now().strftime("%Y-%m-%d")
+            "", default=datetime.datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
         )
         try:
             # Validate date format and ensure it's not in the future
             analysis_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-            if analysis_date.date() > datetime.datetime.now().date():
+            if analysis_date.date() > datetime.datetime.now(tz=timezone.utc).date():
                 console.print("[red]Error: Analysis date cannot be in the future[/red]")
                 continue
             return date_str

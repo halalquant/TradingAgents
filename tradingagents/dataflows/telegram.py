@@ -46,8 +46,8 @@ async def _get_channel_history_async(start_date_str, end_date_str):
                 clean_text = message.text.replace('\n', ' ')
                 formatted_log += f"[{date_str}] {clean_text}\n"
                 n_records += 1
-        
-        intro = f"# News data from Telegram channel @{username} from {start_date_str} to {end_date_str} ({lookback_days} days):\n# Total records: {n_records}\n# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+        intro = f"# News data from Telegram channel @{username} from {start_date_str} to {end_date_str} ({lookback_days} days):\n# Total records: {n_records}\n# Data retrieved on: {datetime.now(tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 
         return intro + formatted_log
 
