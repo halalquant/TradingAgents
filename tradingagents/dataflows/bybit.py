@@ -4,6 +4,7 @@ import json
 import time
 from typing import Dict, Optional, List
 from urllib.parse import urlencode
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 import requests
 from tradingagents.config import settings
@@ -12,7 +13,6 @@ import json
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 from stockstats import StockDataFrame
-
 
 def bybit_v5_request(method: str, path: str, params: Optional[Dict] = None, body: Optional[Dict] = None) -> Dict:
     """Generic signed HTTP request helper for Bybit V5 API."""
@@ -765,6 +765,18 @@ def place_order(
     
     if qty <= 0:
         raise ValueError("qty must be greater than 0")
+
+    # Normalize qty to Bybit's allowed precision to avoid rejections like:
+    # "Order quantity has too many decimals."
+    qty = _normalize_order_qty(
+        symbol=symbol,
+        category=category,
+        order_type=order_type,
+        qty=qty,
+        market_unit=market_unit,
+    )
+    if qty <= 0:
+        raise ValueError("qty is too small after rounding to exchange precision")
     
     # Validate order type and price requirement
     if order_type.upper() == "LIMIT" and price is None:
@@ -934,3 +946,78 @@ def amend_order(
         return data.get("result", {})
     except Exception as e:
         raise ValueError(f"Failed to amend order: {str(e)}")
+
+def _decimals_from_step(step: Optional[str]) -> Optional[int]:
+    if not step:
+        return None
+    try:
+        d = Decimal(str(step))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    exp = d.as_tuple().exponent
+    return max(-exp, 0)
+
+
+def _quantize_down(value: float, decimals: int) -> float:
+    if decimals <= 0:
+        return float(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_DOWN))
+    q = Decimal("1." + ("0" * decimals))
+    return float(Decimal(str(value)).quantize(q, rounding=ROUND_DOWN))
+
+
+def _get_symbol_filters(symbol: str, category: str) -> Dict:
+    data = bybit_v5_request(
+        "GET",
+        "/v5/market/instruments-info",
+        {"category": category.lower(), "symbol": symbol.upper(), "limit": 1},
+    )
+    items = data.get("result", {}).get("list", [])
+    if not items:
+        return {}
+    return items[0]
+
+
+def _normalize_order_qty(
+    *,
+    symbol: str,
+    category: str,
+    order_type: str,
+    qty: float,
+    market_unit: Optional[str],
+) -> float:
+    """Normalize qty to Bybit's allowed precision for the instrument.
+
+    This prevents errors like: "Order quantity has too many decimals.".
+
+    Strategy:
+    - For spot market orders:
+      - market_unit=baseCoin -> quantize to lotSizeFilter.basePrecision
+      - market_unit=quoteCoin -> quantize to lotSizeFilter.quotePrecision
+    - For other categories (linear/inverse): quantize to lotSizeFilter.qtyStep if present.
+    - Fallback to 8 decimals if filters cannot be fetched.
+    """
+    cat = (category or "spot").lower()
+    order_t = (order_type or "Market").upper()
+
+    # Default fallback if we can't fetch filters (keeps behavior predictable)
+    decimals = 8
+
+    try:
+        filters = _get_symbol_filters(symbol=symbol, category=cat)
+        lot = filters.get("lotSizeFilter", {}) if isinstance(filters, dict) else {}
+
+        if cat == "spot":
+            # Bybit spot uses basePrecision/quotePrecision strings like "0.000001"
+            if order_t == "MARKET" and market_unit == "quoteCoin":
+                decimals = _decimals_from_step(lot.get("quotePrecision")) or decimals
+            else:
+                decimals = _decimals_from_step(lot.get("basePrecision")) or decimals
+        else:
+            # Derivatives typically expose qtyStep
+            decimals = _decimals_from_step(lot.get("qtyStep")) or decimals
+    except Exception:
+        # If instruments-info fails, still try with fallback decimals
+        pass
+
+    normalized = _quantize_down(qty, decimals)
+    return normalized
