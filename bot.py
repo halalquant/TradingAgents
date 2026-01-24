@@ -126,7 +126,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = get_status(user_id, job_id)
     logger.info(f"Report response for user {user_id}, job {job_id}")
 
-    if not response:
+    if not response or response.status == AnalysisStatus.NOT_FOUND:
         await update.message.reply_text("❌ Job not found. or error occurred.")
         return
 

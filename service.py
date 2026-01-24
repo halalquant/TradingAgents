@@ -130,7 +130,7 @@ def get_status(user_id: str, job_id: str) -> JobResultStatus:
     
     if meta:
         return JobResultStatus(status=meta.status, result=final_result, message=meta.message)
-    return JobResultStatus(status=AnalysisStatus.DONE, result=None, message="Job not found")
+    return JobResultStatus(status=AnalysisStatus.NOT_FOUND, result=None, message="Job not found")
 
 
 def execute_trader_proposal(user_id: str, job_id: str) -> dict:

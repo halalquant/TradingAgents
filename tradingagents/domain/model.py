@@ -11,6 +11,7 @@ class AnalysisStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     EXECUTED = "executed"
+    NOT_FOUND = "not_found"
 
 @dataclass
 class JobResultStatus:
