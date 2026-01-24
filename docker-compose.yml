@@ -1,18 +1,45 @@
 services:
   redis:
     image: redis:7.4.7
-    container_name: ${REDIS_CONTAINER_NAME:-trading_agents_redis}
+    container_name: trading_agents_redis
     restart: unless-stopped
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis-data:/data
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: >
       redis-server
       --appendonly yes
       --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6380:6379"
+
+  bot:
+    image: trading-bot:latest
+    container_name: trading_agents_bot
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    command: ["python", "bot.py"]
+
+  worker:
+    image: trading-bot:latest
+    container_name: trading_agents_worker
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    command:
+      - rq
+      - worker
+      - --with-scheduler
+      - --url
+      - redis://:${REDIS_PASSWORD}@redis:6379/0
 
 volumes:
   redis-data:

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Virtualenv
+.venv
+env/
+
+# Secrets
+.env
+*session
+state.pkl
+
+# OS / Editor
+.DS_Store
+
+# Local artifacts
+results/
+eval_results/
+eval_data/
+*.csv
+assets/
+
+# Git
+.git
+.gitignore

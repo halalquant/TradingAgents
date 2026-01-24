@@ -163,14 +163,21 @@ Bot Telegram
 python bot.py
 ```
 
-### Connect to Redis (Local)
+### Build the app and running (Local)
 ```
+Docker build
+docker build -t trading-bot:latest .
+docker run --env-file .env trading-bot:latest
+
 docker compose up -d
 docker exec -it {container-id} bash
 redis-cli -h localhost -p 6379 -a trading-agents
 
 Run worker:
 rq worker --url redis://:{{REDIS_PASSWORD}}@{{REDIS_HOST}}:{{REDIS_PORT}}/{{REDIS_DB}} --with-scheduler
+
+Requeue failed jobs
+rq requeue --all --queue default --url redis://:{{REDIS_PASSWORD}}@{{REDIS_HOST}}:{{REDIS_PORT}}/{{REDIS_DB}}
 
 ```
 
