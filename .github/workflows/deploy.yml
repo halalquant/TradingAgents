@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - deploy
+          - rollback
 
 env:
   IMAGE_NAME: jafarmuhammad/cryptoquant
@@ -104,7 +105,7 @@ jobs:
   rollback-bot:
     name: Rollback Telegram Bot
     runs-on: ubuntu-22.04
-    if: github.event.inputs.action == 'deploy'
+    if: github.event.inputs.action == 'rollback'
 
     steps:
       - uses: appleboy/ssh-action@v1.0.3
@@ -122,7 +123,7 @@ jobs:
   rollback-worker:
     name: Rollback RQ Worker
     runs-on: ubuntu-22.04
-    if: github.event.inputs.action == 'deploy'
+    if: github.event.inputs.action == 'rollback'
 
     steps:
       - uses: appleboy/ssh-action@v1.0.3
