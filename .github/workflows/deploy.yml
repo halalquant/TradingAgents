@@ -1,0 +1,514 @@
+name: Build & Deploy Trading Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - build-and-push
+          - deploy-bot
+          - deploy-worker
+          - rollback-bot
+          - rollback-worker
+
+env:
+  IMAGE_NAME: jafarmuhammad/cryptoquant
+  KUBE_NAMESPACE: trading-bot
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-22.04
+    if: ${{ github.event.inputs.action == 'build-and-push' }}
+    outputs:
+      image_tag: ${{ steps.vars.outputs.IMAGE_TAG }}
+      image_full: ${{ steps.vars.outputs.IMAGE_FULL }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set image tag
+        id: vars
+        run: |
+          IMAGE_TAG="$(git rev-parse HEAD)"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE_FULL=${{ env.IMAGE_NAME }}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Building image with tag: ${IMAGE_TAG}"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Image digest
+        run: |
+          echo "✅ Image pushed successfully:"
+          echo "   ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.IMAGE_TAG }}"
+          echo "   ${{ env.IMAGE_NAME }}:latest"
+
+  deploy-bot:
+    name: Deploy Telegram Bot to Production
+    runs-on: ubuntu-22.04
+    needs: build-and-push
+    if: ${{ github.event.inputs.action == 'deploy-bot' }}
+    environment:
+      name: production
+      url: https://your-app-url.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: image
+        run: |
+          IMAGE_TAG="$(git rev-parse HEAD)"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Deploying image: ${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+
+      - name: Deploy Telegram Bot to Kubernetes
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: telegram-bot
+          CONTAINER_NAME: bot
+          IMAGE_FULL: ${{ env.IMAGE_NAME }}:${{ steps.image.outputs.IMAGE_TAG }}
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 30m
+          envs: DEPLOYMENT_NAME,CONTAINER_NAME,IMAGE_FULL,KUBE_NAMESPACE
+          script: |
+            set -e
+            
+            echo "======================================"
+            echo "Starting Telegram Bot deployment..."
+            echo "Namespace: ${KUBE_NAMESPACE:-default}"
+            echo "Deployment: ${DEPLOYMENT_NAME}"
+            echo "Container: ${CONTAINER_NAME}"
+            echo "Image: ${IMAGE_FULL}"
+            echo "======================================"
+            
+            # Check if deployment exists
+            if ! kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} &>/dev/null; then
+              echo "❌ Error: Deployment '${DEPLOYMENT_NAME}' not found in namespace '${KUBE_NAMESPACE:-default}'"
+              exit 1
+            fi
+            
+            # Record current deployment revision for rollback
+            echo "📝 Recording current deployment state..."
+            kubectl rollout history deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Update the deployment with new image
+            echo "🚀 Updating deployment with new image..."
+            kubectl set image deployment/${DEPLOYMENT_NAME} \
+              ${CONTAINER_NAME}=${IMAGE_FULL} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --record
+            
+            # Wait for rollout to complete
+            echo "⏳ Waiting for rollout to complete..."
+            if kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --timeout=10m; then
+              echo "✅ Deployment successful!"
+              echo ""
+              echo "📊 Deployment status:"
+              kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+              echo ""
+              echo "🔍 Pod status:"
+              kubectl get pods -l app=${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            else
+              echo "❌ Deployment failed or timed out"
+              exit 1
+            fi
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: telegram-bot
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            echo "🔍 Verifying deployment health..."
+            
+            # Check pod readiness
+            READY_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.readyReplicas}')
+            DESIRED_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.replicas}')
+            
+            echo "Ready pods: ${READY_PODS}/${DESIRED_PODS}"
+            
+            if [ "${READY_PODS}" = "${DESIRED_PODS}" ]; then
+              echo "✅ All pods are ready!"
+            else
+              echo "⚠️  Warning: Not all pods are ready"
+            fi
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "### ✅ Telegram Bot Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.IMAGE_NAME }}:${{ steps.image.outputs.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment:** \`telegram-bot\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`${{ env.KUBE_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  deploy-worker:
+    name: Deploy RQ Worker to Production
+    runs-on: ubuntu-22.04
+    needs: build-and-push
+    if: ${{ github.event.inputs.action == 'deploy-worker' }}
+    environment:
+      name: production
+      url: https://your-app-url.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: image
+        run: |
+          IMAGE_TAG="$(git rev-parse HEAD)"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "Deploying image: ${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+
+      - name: Deploy RQ Worker to Kubernetes
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: rq-worker
+          CONTAINER_NAME: worker
+          IMAGE_FULL: ${{ env.IMAGE_NAME }}:${{ steps.image.outputs.IMAGE_TAG }}
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 30m
+          envs: DEPLOYMENT_NAME,CONTAINER_NAME,IMAGE_FULL,KUBE_NAMESPACE
+          script: |
+            set -e
+            
+            echo "======================================"
+            echo "Starting RQ Worker deployment..."
+            echo "Namespace: ${KUBE_NAMESPACE:-default}"
+            echo "Deployment: ${DEPLOYMENT_NAME}"
+            echo "Container: ${CONTAINER_NAME}"
+            echo "Image: ${IMAGE_FULL}"
+            echo "======================================"
+            
+            # Check if deployment exists
+            if ! kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} &>/dev/null; then
+              echo "❌ Error: Deployment '${DEPLOYMENT_NAME}' not found in namespace '${KUBE_NAMESPACE:-default}'"
+              exit 1
+            fi
+            
+            # Record current deployment revision for rollback
+            echo "📝 Recording current deployment state..."
+            kubectl rollout history deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Update the deployment with new image
+            echo "🚀 Updating deployment with new image..."
+            kubectl set image deployment/${DEPLOYMENT_NAME} \
+              ${CONTAINER_NAME}=${IMAGE_FULL} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --record
+            
+            # Wait for rollout to complete
+            echo "⏳ Waiting for rollout to complete..."
+            if kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --timeout=10m; then
+              echo "✅ Deployment successful!"
+              echo ""
+              echo "📊 Deployment status:"
+              kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+              echo ""
+              echo "🔍 Pod status:"
+              kubectl get pods -l app=${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            else
+              echo "❌ Deployment failed or timed out"
+              exit 1
+            fi
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: rq-worker
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            echo "🔍 Verifying deployment health..."
+            
+            # Check pod readiness
+            READY_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.readyReplicas}')
+            DESIRED_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.replicas}')
+            
+            echo "Ready pods: ${READY_PODS}/${DESIRED_PODS}"
+            
+            if [ "${READY_PODS}" = "${DESIRED_PODS}" ]; then
+              echo "✅ All pods are ready!"
+            else
+              echo "⚠️  Warning: Not all pods are ready"
+            fi
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "### ✅ RQ Worker Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.IMAGE_NAME }}:${{ steps.image.outputs.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment:** \`rq-worker\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`${{ env.KUBE_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  rollback-bot:
+    name: Rollback Telegram Bot
+    runs-on: ubuntu-22.04
+    needs: deploy-bot
+    if: ${{ github.event.inputs.action == 'rollback-bot' }}
+    environment:
+      name: production
+    
+    steps:
+      - name: Rollback Telegram Bot deployment
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: telegram-bot
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 30m
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            set -e
+            
+            echo "======================================"
+            echo "Starting Telegram Bot rollback..."
+            echo "Namespace: ${KUBE_NAMESPACE:-default}"
+            echo "Deployment: ${DEPLOYMENT_NAME}"
+            echo "======================================"
+            
+            # Check if deployment exists
+            if ! kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} &>/dev/null; then
+              echo "❌ Error: Deployment '${DEPLOYMENT_NAME}' not found"
+              exit 1
+            fi
+            
+            # Show rollout history
+            echo "📜 Deployment history:"
+            kubectl rollout history deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Get current revision
+            CURRENT_REV=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+            echo "Current revision: ${CURRENT_REV}"
+            
+            # Perform rollback
+            echo "⏪ Rolling back to previous revision..."
+            kubectl rollout undo deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Wait for rollback to complete
+            echo "⏳ Waiting for rollback to complete..."
+            if kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --timeout=10m; then
+              echo "✅ Rollback successful!"
+              
+              # Show new state
+              NEW_REV=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+              CURRENT_IMAGE=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.spec.template.spec.containers[0].image}')
+              
+              echo ""
+              echo "📊 Rollback details:"
+              echo "  Previous revision: ${CURRENT_REV}"
+              echo "  Current revision: ${NEW_REV}"
+              echo "  Current image: ${CURRENT_IMAGE}"
+              echo ""
+              echo "🔍 Pod status:"
+              kubectl get pods -l app=${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            else
+              echo "❌ Rollback failed or timed out"
+              exit 1
+            fi
+
+      - name: Verify rollback
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: telegram-bot
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            echo "🔍 Verifying rollback health..."
+            
+            # Check pod readiness
+            READY_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.readyReplicas}')
+            DESIRED_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.replicas}')
+            
+            echo "Ready pods: ${READY_PODS}/${DESIRED_PODS}"
+            
+            if [ "${READY_PODS}" = "${DESIRED_PODS}" ]; then
+              echo "✅ All pods are ready after rollback!"
+            else
+              echo "⚠️  Warning: Not all pods are ready"
+              exit 1
+            fi
+
+      - name: Rollback summary
+        if: success()
+        run: |
+          echo "### ✅ Telegram Bot Rollback Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment:** \`telegram-bot\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`${{ env.KUBE_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** Rolled back to previous revision" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  rollback-worker:
+    name: Rollback RQ Worker
+    runs-on: ubuntu-22.04
+    needs: deploy-worker
+    if: ${{ github.event.inputs.action == 'rollback-worker' }}
+    environment:
+      name: production
+    
+    steps:
+      - name: Rollback RQ Worker deployment
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: rq-worker
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 30m
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            set -e
+            
+            echo "======================================"
+            echo "Starting RQ Worker rollback..."
+            echo "Namespace: ${KUBE_NAMESPACE:-default}"
+            echo "Deployment: ${DEPLOYMENT_NAME}"
+            echo "======================================"
+            
+            # Check if deployment exists
+            if ! kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} &>/dev/null; then
+              echo "❌ Error: Deployment '${DEPLOYMENT_NAME}' not found"
+              exit 1
+            fi
+            
+            # Show rollout history
+            echo "📜 Deployment history:"
+            kubectl rollout history deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Get current revision
+            CURRENT_REV=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+            echo "Current revision: ${CURRENT_REV}"
+            
+            # Perform rollback
+            echo "⏪ Rolling back to previous revision..."
+            kubectl rollout undo deployment/${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            
+            # Wait for rollback to complete
+            echo "⏳ Waiting for rollback to complete..."
+            if kubectl rollout status deployment/${DEPLOYMENT_NAME} \
+              -n ${KUBE_NAMESPACE:-default} \
+              --timeout=10m; then
+              echo "✅ Rollback successful!"
+              
+              # Show new state
+              NEW_REV=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+              CURRENT_IMAGE=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.spec.template.spec.containers[0].image}')
+              
+              echo ""
+              echo "📊 Rollback details:"
+              echo "  Previous revision: ${CURRENT_REV}"
+              echo "  Current revision: ${NEW_REV}"
+              echo "  Current image: ${CURRENT_IMAGE}"
+              echo ""
+              echo "🔍 Pod status:"
+              kubectl get pods -l app=${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default}
+            else
+              echo "❌ Rollback failed or timed out"
+              exit 1
+            fi
+
+      - name: Verify rollback
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOYMENT_NAME: rq-worker
+        with:
+          host: ${{ secrets.KUBE_HOST }}
+          username: ${{ secrets.KUBE_USER }}
+          key: ${{ secrets.KUBE_SSH_KEY }}
+          port: ${{ secrets.KUBE_PORT || 22 }}
+          envs: DEPLOYMENT_NAME,KUBE_NAMESPACE
+          script: |
+            echo "🔍 Verifying rollback health..."
+            
+            # Check pod readiness
+            READY_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.readyReplicas}')
+            DESIRED_PODS=$(kubectl get deployment ${DEPLOYMENT_NAME} -n ${KUBE_NAMESPACE:-default} -o jsonpath='{.status.replicas}')
+            
+            echo "Ready pods: ${READY_PODS}/${DESIRED_PODS}"
+            
+            if [ "${READY_PODS}" = "${DESIRED_PODS}" ]; then
+              echo "✅ All pods are ready after rollback!"
+            else
+              echo "⚠️  Warning: Not all pods are ready"
+              exit 1
+            fi
+
+      - name: Rollback summary
+        if: success()
+        run: |
+          echo "### ✅ RQ Worker Rollback Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment:** \`rq-worker\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`${{ env.KUBE_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** Rolled back to previous revision" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
