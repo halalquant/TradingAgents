@@ -8,10 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - deploy-bot
-          - deploy-worker
-          - rollback-bot
-          - rollback-worker
+          - deploy
 
 env:
   IMAGE_NAME: jafarmuhammad/cryptoquant
@@ -23,8 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     if: >
       github.ref == 'refs/heads/main' &&
-      (github.event.inputs.action == 'deploy-bot' ||
-       github.event.inputs.action == 'deploy-worker')
+      github.event.inputs.action == 'deploy'
     outputs:
       image_tag: ${{ steps.vars.outputs.IMAGE_TAG }}
 
@@ -57,7 +53,7 @@ jobs:
     name: Deploy Telegram Bot
     runs-on: ubuntu-22.04
     needs: build
-    if: github.event.inputs.action == 'deploy-bot'
+    if: github.event.inputs.action == 'deploy'
 
     steps:
       - name: Deploy bot
@@ -83,7 +79,7 @@ jobs:
     name: Deploy RQ Worker
     runs-on: ubuntu-22.04
     needs: build
-    if: github.event.inputs.action == 'deploy-worker'
+    if: github.event.inputs.action == 'deploy'
 
     steps:
       - name: Deploy worker
@@ -108,7 +104,7 @@ jobs:
   rollback-bot:
     name: Rollback Telegram Bot
     runs-on: ubuntu-22.04
-    if: github.event.inputs.action == 'rollback-bot'
+    if: github.event.inputs.action == 'deploy'
 
     steps:
       - uses: appleboy/ssh-action@v1.0.3
@@ -126,7 +122,7 @@ jobs:
   rollback-worker:
     name: Rollback RQ Worker
     runs-on: ubuntu-22.04
-    if: github.event.inputs.action == 'rollback-worker'
+    if: github.event.inputs.action == 'deploy'
 
     steps:
       - uses: appleboy/ssh-action@v1.0.3
