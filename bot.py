@@ -1,4 +1,6 @@
 import logging
+import markdown2
+import pdfkit
 from telegram import Update, Bot
 from telegram.ext import (
     ApplicationBuilder,
@@ -69,6 +71,55 @@ def is_coin_available(symbol: str) -> bool:
         return True
     return symbol.upper() in settings.AVAILABLE_COINS
 
+def generate_pdf_bytes(data: dict) -> bytes:
+    """
+    Converts analysis data dict to PDF bytes using logic from json2pdf.py
+    """
+    special_keys = ["investment_debate_state", "risk_debate_state"]
+    html_pages = []
+
+    for title, content in data.items():
+        page_html = f"<h1>{title}</h1>\n"
+
+        # Special handling for specific keys
+        if title in special_keys and isinstance(content, dict):
+            for sub_key, sub_value in content.items():
+                page_html += f"<h2>{sub_key}</h2>\n"
+                if isinstance(sub_value, str):
+                    page_html += markdown2.markdown(sub_value)
+                else:
+                    page_html += f"<pre>{json.dumps(sub_value, indent=2)}</pre>\n"
+        else:
+            # General handling
+            if isinstance(content, str):
+                page_html += markdown2.markdown(content)
+            else:
+                page_html += f"<pre>{json.dumps(content, indent=2)}</pre>\n"
+
+        # Wrap page HTML with CSS
+        html_page = f"""
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                h1 {{ page-break-before: always; font-size: 24pt; }}
+                h2 {{ font-size: 18pt; margin-top: 20px; }}
+                body {{ font-family: Arial, sans-serif; margin: 50px; }}
+                pre {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; white-space: pre-wrap; }}
+            </style>
+        </head>
+        <body>
+            {page_html}
+        </body>
+        </html>
+        """
+        html_pages.append(html_page)
+
+    full_html = "\n".join(html_pages)
+    
+    # options={"quiet": ""} suppresses wkhtmltopdf console output
+    return pdfkit.from_string(full_html, False, options={"quiet": ""})
+
 # --------------------------------------------------
 # Commands
 # --------------------------------------------------
@@ -137,19 +188,52 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # if response.status == AnalysisStatus.DONE:
+    #     # Parse the result to extract trader_proposal
+    #     import json
+    #     trader_proposal_json = None
+    #     try:
+    #         result_data = json.loads(response.result) if isinstance(response.result, str) else response.result
+    #         trader_proposal = result_data.get("trader_proposal", {})
+    #         if trader_proposal:
+    #             trader_proposal_json = json.dumps(trader_proposal, indent=2)
+    #     except:
+    #         pass
+        
+    #     # Send proposal in chat if available
+    #     if trader_proposal_json:
+    #         await update.message.reply_text(
+    #             f"📊 *Analysis Completed*\n\n"
+    #             f"*Trader Proposal:*\n"
+    #             f"```json\n{trader_proposal_json}\n```",
+    #             parse_mode="Markdown"
+    #         )
+        
+    #     # Send full report as file
+    #     await send_text_as_file(
+    #         bot=context.bot,
+    #         chat_id=update.effective_chat.id,
+    #         content=response.result,
+    #         filename=f"analysis_{job_id}.json",
+    #         caption="📊 Full analysis report attached.",
+    #     )
+    #     return
     if response.status == AnalysisStatus.DONE:
-        # Parse the result to extract trader_proposal
-        import json
+        # Parse the result
+        result_data = response.result
+        if isinstance(result_data, str):
+            result_data = json.loads(result_data)
+
+        # Extract trader proposal
         trader_proposal_json = None
         try:
-            result_data = json.loads(response.result) if isinstance(response.result, str) else response.result
             trader_proposal = result_data.get("trader_proposal", {})
             if trader_proposal:
                 trader_proposal_json = json.dumps(trader_proposal, indent=2)
-        except:
+        except Exception:
             pass
         
-        # Send proposal in chat if available
+        # Send proposal text in chat
         if trader_proposal_json:
             await update.message.reply_text(
                 f"📊 *Analysis Completed*\n\n"
@@ -158,14 +242,34 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         
-        # Send full report as file
-        await send_text_as_file(
-            bot=context.bot,
-            chat_id=update.effective_chat.id,
-            content=response.result,
-            filename=f"analysis_{job_id}.json",
-            caption="📊 Full analysis report attached.",
-        )
+        # --- NEW CODE START ---
+        # Generate and Send PDF
+        try:
+            await update.message.reply_text("⏳ Generating PDF report...")
+            pdf_bytes = generate_pdf_bytes(result_data)
+            
+            # Create a BytesIO object for the file
+            pdf_file = BytesIO(pdf_bytes)
+            pdf_file.name = f"analysis_{job_id}.pdf"
+
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=pdf_file,
+                caption="📊 Full analysis report attached.",
+            )
+        except Exception as e:
+            logger.error(f"PDF generation failed: {e}")
+            await update.message.reply_text("❌ Failed to generate PDF report. Sending JSON instead.")
+            
+            # Fallback to JSON if PDF generation fails
+            await send_text_as_file(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                content=response.result,
+                filename=f"analysis_{job_id}.json",
+                caption="📊 Full analysis report (JSON fallback).",
+            )
+        # --- NEW CODE END ---
         return
 
     if response.status == AnalysisStatus.FAILED:
