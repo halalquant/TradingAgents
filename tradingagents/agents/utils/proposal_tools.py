@@ -5,7 +5,7 @@ from tradingagents.dataflows.interface import route_to_vendor
 def create_place_order_proposal(
     symbol: Annotated[str, "The trading pair symbol, e.g., 'BTC/USDT'"]="BTC/USDT",
     side: Annotated[str, "The order side, either 'Buy' or 'Sell'"]="Buy",
-    order_type: Annotated[str, "The order type, either 'Market' or 'Limit'"]="Market",
+    order_type: Annotated[str, "The order type, either 'Market' or 'Limit'"]="Limit",
     qty: Annotated[float, "The quantity of market unit asset"]=None,
     price: Annotated[float, "The price of the base coin (ignored if order_type is 'Market')"]=None,
     market_unit: Annotated[str, "The market unit, either 'baseCoin' or 'quoteCoin')"]="baseCoin",
