@@ -62,6 +62,8 @@ def create_trader(llm, memory, tools):
             f"1. Analyze the inputs.\n"
             f"2. Decide whether to Buy, Sell, or Hold.\n"
             f"3. If Buying or Selling, **CALL THE APPROPRIATE TOOL** with the correct quantity and price parameters.\n"
+            f"4. Because the trading is done once a day, there might be any volatile changes, it is best for you to use Limit order.\n"
+            f"5. You can make multiple proposal to secure the position and layered the risks.\n"
         )
 
         # 6. Construct Prompt Template
