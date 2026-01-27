@@ -69,6 +69,8 @@ def create_risk_manager(llm, memory, tools):
             f"**CRITICAL:** The 'Trader's Proposal' below is a suggestion only. It is not an active order.\n"
             f"1. **If you AGREE** with the Trader's proposal: You **MUST** call the `create_order_proposal` tool using the exact parameters to execute it.\n"
             f"2. **If you DISAGREE**: Simply **skip it** (do not call the tool). Do not attempt to 'edit' the Trader's proposal text.\n"
+            f"3. Because the trading is done once a day, there might be any volatile changes, it is best for you to use Limit order.\n"
+            f"4. You can make multiple proposal to secure the position and layered the risks.\n"
             f"**Note:** The `edit_order_proposal` and `cancel_order_proposal` tools are strictly for managing existing open orders or modifying your own active proposals, not the Trader's suggestion.\n\n"
 
             f"### Decision Guidelines\n"
