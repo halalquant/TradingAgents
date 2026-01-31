@@ -32,4 +32,4 @@ redis[hiredis]
 rq
 python-telegram-bot
 markdown2
-pdfkit
+weasyprint

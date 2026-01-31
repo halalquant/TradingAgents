@@ -1,6 +1,6 @@
 import logging
 import markdown2
-import pdfkit
+from weasyprint import HTML
 from telegram import Update, Bot
 from telegram.ext import (
     ApplicationBuilder,
@@ -29,9 +29,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
 async def send_text_as_file(
     bot: Bot,
     chat_id: int,
@@ -117,8 +114,9 @@ def generate_pdf_bytes(data: dict) -> bytes:
 
     full_html = "\n".join(html_pages)
     
-    # options={"quiet": ""} suppresses wkhtmltopdf console output
-    return pdfkit.from_string(full_html, False, options={"quiet": ""})
+    # Use weasyprint to generate PDF from HTML
+    pdf_bytes = HTML(string=full_html).write_pdf()
+    return pdf_bytes
 
 # --------------------------------------------------
 # Commands
@@ -188,36 +186,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # if response.status == AnalysisStatus.DONE:
-    #     # Parse the result to extract trader_proposal
-    #     import json
-    #     trader_proposal_json = None
-    #     try:
-    #         result_data = json.loads(response.result) if isinstance(response.result, str) else response.result
-    #         trader_proposal = result_data.get("trader_proposal", {})
-    #         if trader_proposal:
-    #             trader_proposal_json = json.dumps(trader_proposal, indent=2)
-    #     except:
-    #         pass
-        
-    #     # Send proposal in chat if available
-    #     if trader_proposal_json:
-    #         await update.message.reply_text(
-    #             f"📊 *Analysis Completed*\n\n"
-    #             f"*Trader Proposal:*\n"
-    #             f"```json\n{trader_proposal_json}\n```",
-    #             parse_mode="Markdown"
-    #         )
-        
-    #     # Send full report as file
-    #     await send_text_as_file(
-    #         bot=context.bot,
-    #         chat_id=update.effective_chat.id,
-    #         content=response.result,
-    #         filename=f"analysis_{job_id}.json",
-    #         caption="📊 Full analysis report attached.",
-    #     )
-    #     return
     if response.status == AnalysisStatus.DONE:
         # Parse the result
         result_data = response.result
@@ -242,7 +210,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         
-        # --- NEW CODE START ---
         # Generate and Send PDF
         try:
             await update.message.reply_text("⏳ Generating PDF report...")
@@ -269,7 +236,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename=f"analysis_{job_id}.json",
                 caption="📊 Full analysis report (JSON fallback).",
             )
-        # --- NEW CODE END ---
         return
 
     if response.status == AnalysisStatus.FAILED:
